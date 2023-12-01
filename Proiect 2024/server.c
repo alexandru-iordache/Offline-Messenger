@@ -9,10 +9,8 @@
 #include <signal.h>
 #include <pthread.h>
 
-#include <jansson.h>
-
 // #include "sql/sqlite3.h"
-// #include "sql/dbutils.h"
+//  #include "sql/dbutils.h"
 
 typedef struct threadData
 {
@@ -20,12 +18,31 @@ typedef struct threadData
     int threadClient;
 } threadData;
 
+typedef struct ServerResponse
+{
+    int status;
+    char *content;
+} ServerResponse;
+
+typedef struct ClientRequest
+{
+    unsigned short int authorized;
+    char *command;
+    char *content;
+} ClientRequest;
+
 #define PORT 8989
 #define ADDRESS "127.0.0.1"
 
-const char *commands[] = {"Login", "Register", "Exit", "Logout", "Quit", "Back", "Help", "Select User", "View Users"};
+const char *commands[] = {"Login", "Register", "Logout", "Quit", "Help", "Select_User", "View_Users"};
 
 static void *Treat(void *);
+
+char *CreateServerResponse(int status, const char *content);
+ClientRequest ParseClientRequest(const char *request);
+char *ProcessClientRequest(ClientRequest requestStructure);
+
+int RetrieveCommandNumber(const char *command);
 
 int main()
 {
@@ -74,7 +91,7 @@ int main()
     }
 
     int clientId = 0;
-    while(1)
+    while (1)
     {
         int client;
         threadData *td;
@@ -102,53 +119,170 @@ int main()
 
 static void *Treat(void *arg)
 {
-    int logged = 0;
-    int emergencyExit = 0;
     int quit = 0;
-
-    ssize_t noOfBytesRead;
-    char buffer[1024];
 
     struct threadData tdL;
     tdL = *((struct threadData *)arg);
 
-    while(1)
-    {
+    pthread_detach(pthread_self());
 
+    char clientRequest[2048];
+    while (!quit)
+    {
+        char *serverResponse;
+        while (1)
+        {
+            ssize_t noOfBytesRead = recv(tdL.threadClient, clientRequest, 2048, 0);
+            if (noOfBytesRead == -1)
+            {
+                printf("[SERVER][ERROR][Thread %d] Error at recv().\n", tdL.threadID);
+                serverResponse = CreateServerResponse(500, "Error at recv().");
+                break;
+            }
+
+            struct ClientRequest requestStructure = ParseClientRequest(clientRequest);
+
+            serverResponse = ProcessClientRequest(requestStructure);
+            break;
+        }
+
+        if (send(tdL.threadClient, serverResponse, strlen(serverResponse), 0) <= 0)
+        {
+            printf("[SERVER][ERROR][Thread %d] Error at recv().\n", tdL.threadID);
+        }
     }
 
-    // pthread_detach(pthread_self());
-    // while (!quit && !emergencyExit)
-    // {
-    //     while (!logged && !emergencyExit && !quit)
-    //     {
-    //         responseLogin = authentication(&tdL);
-    //         if (responseLogin != NULL)
-    //         {
-    //             if (strcmp(responseLogin, "Error") == 0)
-    //                 emergencyExit = 1;
-    //             if (strcmp(responseLogin, "Quit") == 0)
-    //                 quit = 1;
+    close((intptr_t)arg);
+    return (NULL);
+}
 
-    //             logged = 1;
-    //             username = malloc(sizeof(char) * strlen(responseLogin));
-    //             strcpy(username, responseLogin);
-    //         }
-    //     }
-    //     while (logged && !emergencyExit && !quit)
-    //     {
-    //         responseMessenger = messenger(&tdL, responseLogin);
-    //         if (responseMessenger != NULL)
-    //         {
-    //             if (strcmp(responseLogin, "Error") == 0)
-    //                 emergencyExit = 1;
-    //             if (strcmp(responseLogin, "Quit") == 0)
-    //                 quit = 1;
+char *CreateServerResponse(int status, const char *content)
+{
+    char *result = NULL;
+    int len = snprintf(NULL, 0, "%d:%s", status, content);
 
-    //             logged = 0;
-    //         }
-    //     }
-    // }
-    // close((intptr_t)arg);
-    // return (NULL);
+    if (len < 0)
+    {
+        result = (char *)malloc(len + 1);
+        snprintf(result, len + 1, "%d:%s", status, content);
+    }
+
+    return result;
+}
+
+ClientRequest ParseClientRequest(const char *request)
+{
+    struct ClientRequest requestStructure;
+    requestStructure.authorized = 0;
+    requestStructure.command = NULL;
+    requestStructure.content = NULL;
+
+    if (request == NULL)
+    {
+        return requestStructure;
+    }
+
+    char *token = strtok((char *)request, ":");
+    if (token != NULL)
+    {
+        requestStructure.authorized = atoi(token);
+
+        token = strtok(NULL, ":");
+        if (token != NULL)
+        {
+            requestStructure.command = strdup(token);
+            token = strtok(NULL, ":");
+            if (token != NULL)
+            {
+                requestStructure.content = strdup(token);
+            }
+        }
+        else
+        {
+            requestStructure.authorized = 0;
+            requestStructure.command = NULL;
+            requestStructure.content = NULL;
+        }
+    }
+
+    return requestStructure;
+}
+
+char *ProcessClientRequest(ClientRequest requestStructure)
+{
+    int commandNumber = RetrieveCommandNumber(requestStructure.command);
+    if (commandNumber == -1)
+    {
+        return CreateServerResponse(400, "Bad request");
+    }
+
+    if (!requestStructure.authorized)
+    {
+        switch (commandNumber)
+        {
+        case 0:
+            return CreateServerResponse(200, "Login");
+            break;
+        case 1:
+            return CreateServerResponse(201, "Register");
+            break;
+        case 3:
+            return CreateServerResponse(200, "Quit");
+            break;
+        case 4:
+            return CreateServerResponse(200, "Help");
+            break;
+        default:
+            return CreateServerResponse(401, "Unauthorized");
+            break;
+        }
+    }
+    else
+    {
+        switch (commandNumber)
+        {
+        case 0:
+            return CreateServerResponse(409, "Already logged in");
+            break;
+        case 1:
+            return CreateServerResponse(409, "Already logged in");
+            break;
+        case 2:
+            return CreateServerResponse(200, "Logout");
+            break;
+        case 3:
+            return CreateServerResponse(200, "Quit");
+            break;
+        case 4:
+            return CreateServerResponse(200, "Help");
+            break;
+        case 5:
+            return CreateServerResponse(200, "Select_User");
+            break;
+        case 6:
+            return CreateServerResponse(200, "View_User");
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+int RetrieveCommandNumber(const char *command)
+{
+    if (command == NULL)
+    {
+        return -1;
+    }
+
+    int i = 0;
+    while (commands[i] != NULL)
+    {
+        if (strcmp(commands[i], command) == 0)
+        {
+            return i;
+        }
+        i++;
+    }
+    return -1;
 }
