@@ -56,8 +56,11 @@ int main()
 
     
     size_t bufferSize = 0;
+    char serverResponse[2048];
     while (1)
     {
+        memset(serverResponse, 0, 2048);
+        
         char *buffer = NULL;
         ssize_t numberOfChars = getline(&buffer, &bufferSize, stdin);
         if (numberOfChars <= 0)
@@ -67,15 +70,14 @@ int main()
         }
 
         buffer[strlen(buffer) - 1] = '\0';
-        char *requestStructure = CreateClientRequest(buffer, NULL);
+        char *request = CreateClientRequest(buffer, "");
 
-        if (send(socketDescriptor, buffer, numberOfChars, 0) <= 0)
+        if (send(socketDescriptor, request, strlen(request), 0) <= 0)
         {
             printf("[CLIENT][ERROR] Error at send()!\n");
             continue;
         }
 
-        char *serverResponse = NULL;
         ssize_t noOfBytesRead = recv(socketDescriptor, serverResponse, 2048, 0);
         if (noOfBytesRead < 0)
         {
@@ -84,8 +86,9 @@ int main()
         }
         else if (noOfBytesRead > 0)
         {
+            printf("%s\n", serverResponse);
             struct ServerResponse responseStructure = ParseServerResponse(serverResponse);
-            printf("[SERVER]%s\n", responseStructure.content);
+            printf("[SERVER] %s\n", responseStructure.content);
         }
     }
 }
@@ -108,7 +111,7 @@ ServerResponse ParseServerResponse(const char *response)
 {
     struct ServerResponse responseStructure;
     responseStructure.status = 500;
-    responseStructure.content = NULL;
+    responseStructure.content = malloc(2048 * sizeof(char*));
 
     if (response == NULL)
     {
@@ -128,7 +131,7 @@ ServerResponse ParseServerResponse(const char *response)
         else
         {
             responseStructure.status = 500;
-            responseStructure.content = NULL;
+            responseStructure.content = "Parse Error";
         }
     }
 

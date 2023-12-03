@@ -36,7 +36,7 @@ typedef struct ClientRequest
 
 const char *commands[] = {"Login", "Register", "Logout", "Quit", "Help", "Select_User", "View_Users"};
 
-static void *Treat(void *);
+static void *treat(void *);
 
 char *CreateServerResponse(int status, const char *content);
 ClientRequest ParseClientRequest(const char *request);
@@ -110,49 +110,57 @@ int main()
         printf("[SERVER] Client %d is accepted.\n", clientId);
 
         td = (struct threadData *)malloc(sizeof(struct threadData));
-        td->threadID = clientId++;
+        td->threadID = clientId;
         td->threadClient = client;
 
-        pthread_create(&threads[clientId], NULL, &Treat, td);
+        int threadCreationResult = pthread_create(&threads[clientId], NULL, &treat, td);
+        if (threadCreationResult != 0)
+        {
+           fprintf(stderr, "[SERVER][ERROR] Failed to create thread: %s\n", strerror(threadCreationResult)); 
+        }
+        clientId++;
     }
 }
 
-static void *Treat(void *arg)
+static void *treat(void *arg)
 {
     int quit = 0;
 
-    struct threadData tdL;
-    tdL = *((struct threadData *)arg);
+    struct threadData *tdL;
+    tdL = (struct threadData *)arg;
 
     pthread_detach(pthread_self());
-
+    
     char clientRequest[2048];
+    char *serverResponse = malloc(2048 * sizeof(char));
     while (!quit)
     {
-        char *serverResponse;
         while (1)
         {
-            ssize_t noOfBytesRead = recv(tdL.threadClient, clientRequest, 2048, 0);
+            ssize_t noOfBytesRead = recv(tdL->threadClient, clientRequest, 2048, 0);
             if (noOfBytesRead == -1)
             {
-                printf("[SERVER][ERROR][Thread %d] Error at recv().\n", tdL.threadID);
+                printf("[SERVER][ERROR][Thread %d] Error at recv().\n", tdL->threadID);
                 serverResponse = CreateServerResponse(500, "Error at recv().");
                 break;
             }
 
             struct ClientRequest requestStructure = ParseClientRequest(clientRequest);
-
             serverResponse = ProcessClientRequest(requestStructure);
+
             break;
         }
 
-        if (send(tdL.threadClient, serverResponse, strlen(serverResponse), 0) <= 0)
+        if (send(tdL->threadClient, serverResponse, strlen(serverResponse), 0) <= 0)
         {
-            printf("[SERVER][ERROR][Thread %d] Error at recv().\n", tdL.threadID);
+            printf("[SERVER][ERROR][Thread %d] Error at recv().\n", tdL->threadID);
         }
+
+        memset(serverResponse, 0, strlen(serverResponse));
     }
 
-    close((intptr_t)arg);
+    free(serverResponse);
+    close(tdL->threadClient);
     return (NULL);
 }
 
@@ -161,7 +169,7 @@ char *CreateServerResponse(int status, const char *content)
     char *result = NULL;
     int len = snprintf(NULL, 0, "%d:%s", status, content);
 
-    if (len < 0)
+    if (len > 0)
     {
         result = (char *)malloc(len + 1);
         snprintf(result, len + 1, "%d:%s", status, content);
