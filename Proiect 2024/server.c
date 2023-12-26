@@ -10,7 +10,7 @@
 #include <pthread.h>
 
 // #include "sql/sqlite3.h"
-//  #include "sql/dbutils.h"
+#include "utils/database_utils.h"
 
 typedef struct threadData
 {
@@ -35,6 +35,7 @@ typedef struct ClientRequest
 #define ADDRESS "127.0.0.1"
 
 const char *commands[] = {"Login", "Register", "Logout", "Quit", "Help", "Select_User", "View_Users"};
+sqlite3 *DB;
 
 static void *treat(void *);
 
@@ -46,7 +47,7 @@ int RetrieveCommandNumber(const char *command);
 
 int main()
 {
-    // createDB("Database.db");
+    createDatabase(DB, "Offline_Messenger_DB.db");
 
     struct sockaddr_in serverSocketStructure;
     struct sockaddr_in clientSocketStructure;

@@ -1,0 +1,2 @@
+gcc ncurses_example.c "utils/communication_types.h" "utils/communication_utils.h" -o your_program -lncurses -> client
+gcc server.c "utils/dbutils.c" -o server -pthread -lsqlite3 -> server
