@@ -3,6 +3,11 @@
 
 #include "../sql/sqlite3.h"
 
-int createDatabase(sqlite3 **db, const char *databaseName);
+int CreateDatabase(sqlite3 **db, const char *databaseName);
+int OpenDatabase(sqlite3 **db, const char *databaseName);
+
+int InsertUser(sqlite3 *db, const char *username, const char *firstName, const char *lastName, const char *password);
+
+int GetUsersCountByUsername(sqlite3 *db, const char *username);
 
 #endif

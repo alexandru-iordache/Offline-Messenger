@@ -10,6 +10,9 @@
 #include <pthread.h>
 
 // #include "sql/sqlite3.h"
+#include "utils/communication_types.h"
+#include "utils/communication_utils.h"
+
 #include "utils/database_utils.h"
 
 typedef struct threadData
@@ -18,36 +21,32 @@ typedef struct threadData
     int threadClient;
 } threadData;
 
-typedef struct ServerResponse
-{
-    int status;
-    char *content;
-} ServerResponse;
-
-typedef struct ClientRequest
-{
-    unsigned short int authorized;
-    char *command;
-    char *content;
-} ClientRequest;
-
+// SOCKET constants
 #define PORT 8989
 #define ADDRESS "127.0.0.1"
 
-const char *commands[] = {"Login", "Register", "Logout", "Quit", "Help", "Select_User", "View_Users"};
+#define DATABASE_NAME "Offline_Messenger_DB.db"
 sqlite3 *DB;
 
 static void *treat(void *);
 
-char *CreateServerResponse(int status, const char *content);
-ClientRequest ParseClientRequest(const char *request);
 char *ProcessClientRequest(ClientRequest requestStructure);
+ServerResponse ProccesLoginRequest(ClientRequest clientRequest);
+ServerResponse ProccesRegisterRequest(ClientRequest clientRequest);
 
-int RetrieveCommandNumber(const char *command);
-
+int FileExists(const char *filename);
+char **ParseContent(const char *content, int *numberOfInputs);
+void FreeParsedStrings(char **strings, int numStrings);
 int main()
 {
-    createDatabase(DB, "Offline_Messenger_DB.db");
+    if (FileExists(DATABASE_NAME))
+    {
+        OpenDatabase(&DB, DATABASE_NAME);
+    }
+    else
+    {
+        CreateDatabase(&DB, DATABASE_NAME);
+    }
 
     struct sockaddr_in serverSocketStructure;
     struct sockaddr_in clientSocketStructure;
@@ -117,7 +116,7 @@ int main()
         int threadCreationResult = pthread_create(&threads[clientId], NULL, &treat, td);
         if (threadCreationResult != 0)
         {
-           fprintf(stderr, "[SERVER][ERROR] Failed to create thread: %s\n", strerror(threadCreationResult)); 
+            fprintf(stderr, "[SERVER][ERROR] Failed to create thread: %s\n", strerror(threadCreationResult));
         }
         clientId++;
     }
@@ -131,7 +130,7 @@ static void *treat(void *arg)
     tdL = (struct threadData *)arg;
 
     pthread_detach(pthread_self());
-    
+
     char clientRequest[2048];
     char *serverResponse = malloc(2048 * sizeof(char));
     while (!quit)
@@ -165,58 +164,7 @@ static void *treat(void *arg)
     return (NULL);
 }
 
-char *CreateServerResponse(int status, const char *content)
-{
-    char *result = NULL;
-    int len = snprintf(NULL, 0, "%d:%s", status, content);
-
-    if (len > 0)
-    {
-        result = (char *)malloc(len + 1);
-        snprintf(result, len + 1, "%d:%s", status, content);
-    }
-
-    return result;
-}
-
-ClientRequest ParseClientRequest(const char *request)
-{
-    struct ClientRequest requestStructure;
-    requestStructure.authorized = 0;
-    requestStructure.command = NULL;
-    requestStructure.content = NULL;
-
-    if (request == NULL)
-    {
-        return requestStructure;
-    }
-
-    char *token = strtok((char *)request, ":");
-    if (token != NULL)
-    {
-        requestStructure.authorized = atoi(token);
-
-        token = strtok(NULL, ":");
-        if (token != NULL)
-        {
-            requestStructure.command = strdup(token);
-            token = strtok(NULL, ":");
-            if (token != NULL)
-            {
-                requestStructure.content = strdup(token);
-            }
-        }
-        else
-        {
-            requestStructure.authorized = 0;
-            requestStructure.command = NULL;
-            requestStructure.content = NULL;
-        }
-    }
-
-    return requestStructure;
-}
-
+// Proccesing functions
 char *ProcessClientRequest(ClientRequest requestStructure)
 {
     int commandNumber = RetrieveCommandNumber(requestStructure.command);
@@ -225,36 +173,35 @@ char *ProcessClientRequest(ClientRequest requestStructure)
         return CreateServerResponse(400, "Bad request");
     }
 
-    if (!requestStructure.authorized)
+    if (!requestStructure.authorized) // Unauthorized requests handling
     {
+        struct ServerResponse responseStructure;
+
         switch (commandNumber)
         {
         case 0:
-            return CreateServerResponse(200, "Login");
-            break;
+            responseStructure = ProccesLoginRequest(requestStructure);
         case 1:
-            return CreateServerResponse(201, "Register");
-            break;
+            responseStructure = ProccesRegisterRequest(requestStructure);
         case 3:
             return CreateServerResponse(200, "Quit");
-            break;
         case 4:
             return CreateServerResponse(200, "Help");
-            break;
         default:
-            return CreateServerResponse(401, "Unauthorized");
-            break;
+            return CreateServerResponse(401, "Unauthorized.");
         }
+
+        return CreateServerResponse(responseStructure.status, responseStructure.content);
     }
-    else
+    else // Authorized requests handling
     {
         switch (commandNumber)
         {
         case 0:
-            return CreateServerResponse(409, "Already logged in");
+            return CreateServerResponse(409, "Already logged in.");
             break;
         case 1:
-            return CreateServerResponse(409, "Already logged in");
+            return CreateServerResponse(409, "Already logged in.");
             break;
         case 2:
             return CreateServerResponse(200, "Logout");
@@ -277,21 +224,101 @@ char *ProcessClientRequest(ClientRequest requestStructure)
     }
 }
 
-int RetrieveCommandNumber(const char *command)
+ServerResponse ProccesLoginRequest(ClientRequest clientRequest)
 {
-    if (command == NULL)
+}
+
+ServerResponse ProccesRegisterRequest(ClientRequest clientRequest)
+{
+    struct ServerResponse serverResponseStructure;
+
+    int numberOfInputs = 1;
+    char **userInputs = ParseContent(clientRequest.content, &numberOfInputs);
+
+    if (userInputs == NULL || numberOfInputs != 5)
     {
-        return -1;
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error!";
+
+        FreeParsedStrings(userInputs, numberOfInputs);
+        return serverResponseStructure;
     }
 
-    int i = 0;
-    while (commands[i] != NULL)
+    int usersCountByUsername = GetUsersCountByUsername(DB, userInputs[0]);
+    if (usersCountByUsername > 0)
     {
-        if (strcmp(commands[i], command) == 0)
+        serverResponseStructure.status = 409;
+        serverResponseStructure.content = "Username already exists!";
+
+        FreeParsedStrings(userInputs, numberOfInputs);
+        return serverResponseStructure;
+    }
+    if (usersCountByUsername < -1)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error!";
+
+        return serverResponseStructure;
+    }
+
+    int insertResult = InsertUser(DB, userInputs[0], userInputs[1], userInputs[2], userInputs[3]);
+
+    if (insertResult != 0)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Internal Server Error!";
+    }
+    else
+    {
+        serverResponseStructure.status = 201;
+        serverResponseStructure.content = "Created.";
+    }
+
+    FreeParsedStrings(userInputs, numberOfInputs);
+    return serverResponseStructure;
+}
+
+// Helper functions
+int FileExists(const char *filename)
+{
+    return access(filename, F_OK) != -1;
+}
+
+void FreeParsedStrings(char **strings, int numStrings)
+{
+    for (int i = 0; i < numStrings; i++)
+    {
+        free(strings[i]);
+    }
+    free(strings);
+}
+
+char **ParseContent(const char *content, int *numberOfInputs)
+{
+    for (const char *ptr = content; *ptr != '\0'; ++ptr)
+    {
+        if (*ptr == '#')
         {
-            return i;
+            (*numberOfInputs)++;
         }
+    }
+
+    if (numberOfInputs <= 0)
+    {
+        return NULL;
+    }
+
+    char **result = (char **)malloc((*numberOfInputs) * sizeof(char *));
+
+    int i = 0;
+    char *token = strtok((char *)content, "#");
+    while (token != NULL)
+    {
+        result[i] = strdup(token);
+
+        token = strtok(NULL, "#");
         i++;
     }
-    return -1;
+
+    return result;
 }
