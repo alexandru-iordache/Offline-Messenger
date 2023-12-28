@@ -25,9 +25,13 @@ typedef struct threadData
 #define PORT 8989
 #define ADDRESS "127.0.0.1"
 
+#define FILENAME_FOLDER "logs/"
 #define DATABASE_NAME "Offline_Messenger_DB.db"
+
+char *FILE_NAME;
 sqlite3 *DB;
 
+pthread_mutex_t fileMutex = PTHREAD_MUTEX_INITIALIZER;
 static void *treat(void *);
 
 char *ProcessClientRequest(ClientRequest requestStructure);
@@ -35,6 +39,12 @@ ServerResponse ProccesLoginRequest(ClientRequest clientRequest);
 ServerResponse ProccesRegisterRequest(ClientRequest clientRequest);
 
 int FileExists(const char *filename);
+int CreateFile();
+
+void LogEvent(int clientId, const char *event);
+void LogRequestEvent(int clientId, const ClientRequest clientRequestStructure);
+void LogResponseEvent(int clientId, const ServerResponse serverResponseStructure);
+
 char **ParseContent(const char *content, int *numberOfInputs);
 void FreeParsedStrings(char **strings, int numStrings);
 int main()
@@ -46,6 +56,13 @@ int main()
     else
     {
         CreateDatabase(&DB, DATABASE_NAME);
+    }
+
+    int createLogFileFlag = CreateFile();
+    if (!CreateFile())
+    {
+        printf("[SERVER][ERROR] Error at create log file.!\n");
+        return -1;
     }
 
     struct sockaddr_in serverSocketStructure;
@@ -131,6 +148,8 @@ static void *treat(void *arg)
 
     pthread_detach(pthread_self());
 
+    LogEvent(tdL->threadID, "Client connected");
+
     char clientRequest[2048];
     char *serverResponse = malloc(2048 * sizeof(char));
     while (!quit)
@@ -140,12 +159,13 @@ static void *treat(void *arg)
             ssize_t noOfBytesRead = recv(tdL->threadClient, clientRequest, 2048, 0);
             if (noOfBytesRead == -1)
             {
-                printf("[SERVER][ERROR][Thread %d] Error at recv().\n", tdL->threadID);
+                printf("[SERVER][ERROR][Client %d] Error at recv().\n", tdL->threadID);
                 serverResponse = CreateServerResponse(500, "Error at recv().");
                 break;
             }
-
+            LogEvent(tdL->threadID, "Request received");
             struct ClientRequest requestStructure = ParseClientRequest(clientRequest);
+            LogRequestEvent(tdL->threadID, requestStructure);
             serverResponse = ProcessClientRequest(requestStructure);
 
             break;
@@ -153,7 +173,7 @@ static void *treat(void *arg)
 
         if (send(tdL->threadClient, serverResponse, strlen(serverResponse), 0) <= 0)
         {
-            printf("[SERVER][ERROR][Thread %d] Error at recv().\n", tdL->threadID);
+            printf("[SERVER][ERROR][Client %d] Error at recv().\n", tdL->threadID);
         }
 
         memset(serverResponse, 0, strlen(serverResponse));
@@ -283,6 +303,101 @@ int FileExists(const char *filename)
 {
     return access(filename, F_OK) != -1;
 }
+
+int CreateFile()
+{
+    time_t currentTime;
+    struct tm timeInfo;
+
+    char timeString[50];
+    memset(timeString, 0, 50);
+
+    time(&currentTime);
+
+    localtime_r(&currentTime, &timeInfo);
+
+    strftime(timeString, 50, "%Y-%m-%d_%H:%M:%S", &timeInfo);
+    
+    int len = snprintf(NULL, 0, "%s%s_LOGS.txt", FILENAME_FOLDER, timeString);
+    if (len <= 0)
+    {
+        return 0;
+    }
+
+    FILE_NAME = (char *)malloc(len + 1);
+    snprintf(FILE_NAME, len + 1, "%s%s_LOGS.txt", FILENAME_FOLDER, timeString);
+
+    FILE *file = fopen(FILE_NAME, "a");
+    if (file == NULL)
+    {
+        return 0;
+    }
+
+    fclose(file);
+    return 1;
+}
+
+void LogEvent(int clientId, const char *event)
+{
+    time_t currentTime;
+    struct tm timeInfo;
+
+    char timeString[50];
+    memset(timeString, 0, 50);
+
+    time(&currentTime);
+
+    localtime_r(&currentTime, &timeInfo);
+
+    strftime(timeString, 50, "%H:%M:%S", &timeInfo);
+
+    int len = snprintf(NULL, 0, "[Client %d][%s] - %s\n", clientId, timeString, event);
+    if (len <= 0)
+    {
+        printf("[SERVER][ERROR][Client %d] Log Write error.\n", clientId);
+        return;
+    }
+
+    char *eventLog = NULL;
+    eventLog = (char *)malloc(len + 1);
+    snprintf(eventLog,  len + 1, "[Client %d][%s] - %s\n", clientId, timeString, event);
+
+    pthread_mutex_lock(&fileMutex);
+
+    FILE *file = fopen(FILE_NAME, "a");
+    if (file == NULL)
+    {
+        free(eventLog);
+        printf("[SERVER][ERROR][Client %d] Log Write error.\n", clientId);
+        return;
+    }
+
+    fprintf(file, "%s", eventLog);
+    fclose(file);
+    pthread_mutex_unlock(&fileMutex);
+
+    free(eventLog);
+    return;
+}
+
+void LogRequestEvent(int clientId, const ClientRequest clientRequestStructure)
+{
+    int len = snprintf(NULL, 0, "[Auth: %d][Cmd: %s] - %s", clientRequestStructure.authorized, 
+                        clientRequestStructure.command, clientRequestStructure.content);
+    if (len <= 0)
+    {
+        return;
+    }
+
+    char *event = NULL;
+    event = (char *)malloc(len + 1);
+    snprintf(event,  len + 1, "[Auth: %d][Cmd: %s] - %s", clientRequestStructure.authorized, clientRequestStructure.command, 
+            clientRequestStructure.content);
+
+    LogEvent(clientId, event);
+}
+
+void LogResponseEvent(int clientId, const ServerResponse serverResponseStructure){}
 
 void FreeParsedStrings(char **strings, int numStrings)
 {
