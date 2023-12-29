@@ -34,9 +34,9 @@ sqlite3 *DB;
 pthread_mutex_t fileMutex = PTHREAD_MUTEX_INITIALIZER;
 static void *treat(void *);
 
-char *ProcessClientRequest(ClientRequest requestStructure);
-ServerResponse ProccesLoginRequest(ClientRequest clientRequest);
-ServerResponse ProccesRegisterRequest(ClientRequest clientRequest);
+char *ProcessClientRequest(const int clientId, ClientRequest requestStructure);
+ServerResponse ProccesLoginRequest(const int clientId, ClientRequest clientRequest);
+ServerResponse ProccesRegisterRequest(const int clientId, ClientRequest clientRequest);
 
 int FileExists(const char *filename);
 int CreateFile();
@@ -166,7 +166,8 @@ static void *treat(void *arg)
             LogEvent(tdL->threadID, "Request received");
             struct ClientRequest requestStructure = ParseClientRequest(clientRequest);
             LogRequestEvent(tdL->threadID, requestStructure);
-            serverResponse = ProcessClientRequest(requestStructure);
+
+            serverResponse = ProcessClientRequest(tdL->threadID, requestStructure);
 
             break;
         }
@@ -185,24 +186,28 @@ static void *treat(void *arg)
 }
 
 // Proccesing functions
-char *ProcessClientRequest(ClientRequest requestStructure)
+char *ProcessClientRequest(const int clientId, ClientRequest requestStructure)
 {
+    struct ServerResponse responseStructure;
     int commandNumber = RetrieveCommandNumber(requestStructure.command);
     if (commandNumber == -1)
     {
-        return CreateServerResponse(400, "Bad request");
+        responseStructure.status = 400;
+        responseStructure.content = "Bad request.";
+        LogResponseEvent(clientId, responseStructure);
+        return CreateServerResponse(responseStructure.status, responseStructure.content);
     }
 
     if (!requestStructure.authorized) // Unauthorized requests handling
     {
-        struct ServerResponse responseStructure;
-
         switch (commandNumber)
         {
         case 0:
-            responseStructure = ProccesLoginRequest(requestStructure);
+            responseStructure = ProccesLoginRequest(clientId, requestStructure);
+            break;
         case 1:
-            responseStructure = ProccesRegisterRequest(requestStructure);
+            responseStructure = ProccesRegisterRequest(clientId, requestStructure);
+            break;
         case 3:
             return CreateServerResponse(200, "Quit");
         case 4:
@@ -210,8 +215,6 @@ char *ProcessClientRequest(ClientRequest requestStructure)
         default:
             return CreateServerResponse(401, "Unauthorized.");
         }
-
-        return CreateServerResponse(responseStructure.status, responseStructure.content);
     }
     else // Authorized requests handling
     {
@@ -242,13 +245,54 @@ char *ProcessClientRequest(ClientRequest requestStructure)
             break;
         }
     }
+
+    LogResponseEvent(clientId, responseStructure);
+    return CreateServerResponse(responseStructure.status, responseStructure.content);
 }
 
-ServerResponse ProccesLoginRequest(ClientRequest clientRequest)
+ServerResponse ProccesLoginRequest(const int clientId, ClientRequest clientRequest)
 {
+    struct ServerResponse serverResponseStructure;
+
+    int numberOfInputs = 1;
+    char **userInputs = ParseContent(clientRequest.content, &numberOfInputs);
+
+    if (userInputs == NULL || numberOfInputs != 2)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error!";
+
+        FreeParsedStrings(userInputs, numberOfInputs);
+        LogEvent(clientId, "Login - Unsuccesfully Parse Content");
+        return serverResponseStructure;
+    }
+    LogEvent(clientId, "Login - Succesfully Parse Content");
+
+    int usersCountByUsernameAndPassword = GetUsersByUsernameAndPassword(DB, userInputs[0], userInputs[1]);
+    switch (usersCountByUsernameAndPassword)
+    {
+    case 0:
+        serverResponseStructure.status = 401;
+        serverResponseStructure.content = "Check Username and Password.";
+        LogEvent(clientId, "Login - Database - GetUsersCountByUsernameAndPassword - Count = 0");
+        break;
+    case 1:
+        serverResponseStructure.status = 200;
+        serverResponseStructure.content = "Ok.";
+        LogEvent(clientId, "Login - Database - GetUsersCountByUsernameAndPassword - Count = 1");
+        break;
+    default:
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Internal Server Error!";
+        LogEvent(clientId, "Login - Database - GetUsersCountByUsernameAndPassword - Count = -1");
+        break;
+    }
+
+    FreeParsedStrings(userInputs, numberOfInputs);
+    return serverResponseStructure;
 }
 
-ServerResponse ProccesRegisterRequest(ClientRequest clientRequest)
+ServerResponse ProccesRegisterRequest(const int clientId, ClientRequest clientRequest)
 {
     struct ServerResponse serverResponseStructure;
 
@@ -261,8 +305,10 @@ ServerResponse ProccesRegisterRequest(ClientRequest clientRequest)
         serverResponseStructure.content = "Server Internal Error!";
 
         FreeParsedStrings(userInputs, numberOfInputs);
+        LogEvent(clientId, "Register - Unsuccesfully Parse Content");
         return serverResponseStructure;
     }
+    LogEvent(clientId, "Register - Succesfully Parse Content");
 
     int usersCountByUsername = GetUsersCountByUsername(DB, userInputs[0]);
     if (usersCountByUsername > 0)
@@ -271,6 +317,7 @@ ServerResponse ProccesRegisterRequest(ClientRequest clientRequest)
         serverResponseStructure.content = "Username already exists!";
 
         FreeParsedStrings(userInputs, numberOfInputs);
+        LogEvent(clientId, "Register - Database - GetUsersCountByUsername - Count Bigger > 0");
         return serverResponseStructure;
     }
     if (usersCountByUsername < -1)
@@ -278,6 +325,8 @@ ServerResponse ProccesRegisterRequest(ClientRequest clientRequest)
         serverResponseStructure.status = 500;
         serverResponseStructure.content = "Server Internal Error!";
 
+        FreeParsedStrings(userInputs, numberOfInputs);
+        LogEvent(clientId, "Register - Database - GetUsersCountByUsername - Count Lower < 0");
         return serverResponseStructure;
     }
 
@@ -287,11 +336,13 @@ ServerResponse ProccesRegisterRequest(ClientRequest clientRequest)
     {
         serverResponseStructure.status = 500;
         serverResponseStructure.content = "Internal Server Error!";
+        LogEvent(clientId, "Register - Database - Insert - Succesful");
     }
     else
     {
         serverResponseStructure.status = 201;
         serverResponseStructure.content = "Created.";
+        LogEvent(clientId, "Register - Database - Insert - Unsuccesful");
     }
 
     FreeParsedStrings(userInputs, numberOfInputs);
@@ -317,7 +368,7 @@ int CreateFile()
     localtime_r(&currentTime, &timeInfo);
 
     strftime(timeString, 50, "%Y-%m-%d_%H:%M:%S", &timeInfo);
-    
+
     int len = snprintf(NULL, 0, "%s%s_LOGS.txt", FILENAME_FOLDER, timeString);
     if (len <= 0)
     {
@@ -360,7 +411,7 @@ void LogEvent(int clientId, const char *event)
 
     char *eventLog = NULL;
     eventLog = (char *)malloc(len + 1);
-    snprintf(eventLog,  len + 1, "[Client %d][%s] - %s\n", clientId, timeString, event);
+    snprintf(eventLog, len + 1, "[Client %d][%s] - %s\n", clientId, timeString, event);
 
     pthread_mutex_lock(&fileMutex);
 
@@ -382,8 +433,8 @@ void LogEvent(int clientId, const char *event)
 
 void LogRequestEvent(int clientId, const ClientRequest clientRequestStructure)
 {
-    int len = snprintf(NULL, 0, "[Auth: %d][Cmd: %s] - %s", clientRequestStructure.authorized, 
-                        clientRequestStructure.command, clientRequestStructure.content);
+    int len = snprintf(NULL, 0, "[Auth: %d][Cmd: %s] - %s", clientRequestStructure.authorized,
+                       clientRequestStructure.command, clientRequestStructure.content);
     if (len <= 0)
     {
         return;
@@ -391,13 +442,27 @@ void LogRequestEvent(int clientId, const ClientRequest clientRequestStructure)
 
     char *event = NULL;
     event = (char *)malloc(len + 1);
-    snprintf(event,  len + 1, "[Auth: %d][Cmd: %s] - %s", clientRequestStructure.authorized, clientRequestStructure.command, 
-            clientRequestStructure.content);
+    snprintf(event, len + 1, "[Auth: %d][Cmd: %s] - %s", clientRequestStructure.authorized, clientRequestStructure.command,
+             clientRequestStructure.content);
 
     LogEvent(clientId, event);
 }
 
-void LogResponseEvent(int clientId, const ServerResponse serverResponseStructure){}
+void LogResponseEvent(int clientId, const ServerResponse serverResponseStructure)
+{
+    int len = snprintf(NULL, 0, "[Status: %d] - %s", serverResponseStructure.status,
+                       serverResponseStructure.content);
+    if (len <= 0)
+    {
+        return;
+    }
+
+    char *event = NULL;
+    event = (char *)malloc(len + 1);
+    snprintf(event, len + 1, "[Status: %d] - %s", serverResponseStructure.status,
+             serverResponseStructure.content);
+    LogEvent(clientId, event);
+}
 
 void FreeParsedStrings(char **strings, int numStrings)
 {

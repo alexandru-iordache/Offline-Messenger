@@ -52,7 +52,7 @@ int GetUsersCountByUsername(sqlite3 *db, const char *username)
     int rc = sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM users WHERE username=?", -1, &stmt, NULL);
     if (rc != SQLITE_OK)
     {
-        printf("[Error][Database] Users count query prepare error: %s\n", err);
+        printf("[Error][Database] Users count by username query prepare error: %s\n", err);
         fflush(stdout);
         return -1;
     }
@@ -62,6 +62,37 @@ int GetUsersCountByUsername(sqlite3 *db, const char *username)
     if (rc != SQLITE_ROW)
     {
         printf("[Error][Database] Users count query execute error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+    int usersCount = sqlite3_column_int(stmt, 0);
+
+    sqlite3_clear_bindings(stmt);
+    sqlite3_reset(stmt);
+    sqlite3_finalize(stmt);
+
+    return usersCount;
+}
+
+int GetUsersByUsernameAndPassword(sqlite3 *db, char *username, char *password)
+{
+    sqlite3_stmt *stmt;
+    char *err;
+
+    int rc = sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM users WHERE username=? AND password=?", -1, &stmt, NULL);
+    if (rc != SQLITE_OK)
+    {
+        printf("[Error][Database] Users count by username and password query prepare error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+
+    rc = sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    rc = sqlite3_bind_text(stmt, 2, password, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW)
+    {
+        printf("[Error][Database] Users count by username and password query execute error: %s\n", err);
         fflush(stdout);
         return -1;
     }
