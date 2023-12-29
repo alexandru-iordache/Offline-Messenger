@@ -79,12 +79,15 @@ ClientRequest ParseClientRequest(const char *request)
             {
                 requestStructure.content = strdup(token);
             }
+            else
+            {
+                requestStructure.authorized = 0;
+                requestStructure.command = NULL;
+            }
         }
         else
         {
             requestStructure.authorized = 0;
-            requestStructure.command = NULL;
-            requestStructure.content = NULL;
         }
     }
 
@@ -95,7 +98,7 @@ ServerResponse ParseServerResponse(const char *response)
 {
     struct ServerResponse responseStructure;
     responseStructure.status = 500;
-    responseStructure.content = malloc(2048 * sizeof(char*));
+    responseStructure.content = NULL;
 
     if (response == NULL)
     {
@@ -115,7 +118,6 @@ ServerResponse ParseServerResponse(const char *response)
         else
         {
             responseStructure.status = 500;
-            responseStructure.content = "Parse Error";
         }
     }
 

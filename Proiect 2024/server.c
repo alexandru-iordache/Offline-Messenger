@@ -151,7 +151,7 @@ static void *treat(void *arg)
     LogEvent(tdL->threadID, "Client connected");
 
     char clientRequest[2048];
-    char *serverResponse = malloc(2048 * sizeof(char));
+    char *serverResponse = NULL;
     while (!quit)
     {
         while (1)
@@ -163,7 +163,9 @@ static void *treat(void *arg)
                 serverResponse = CreateServerResponse(500, "Error at recv().");
                 break;
             }
-            LogEvent(tdL->threadID, "Request received");
+            clientRequest[noOfBytesRead] = '\0';
+
+            LogEvent(tdL->threadID, "Request received.");
             struct ClientRequest requestStructure = ParseClientRequest(clientRequest);
             LogRequestEvent(tdL->threadID, requestStructure);
 
@@ -177,10 +179,11 @@ static void *treat(void *arg)
             printf("[SERVER][ERROR][Client %d] Error at recv().\n", tdL->threadID);
         }
 
-        memset(serverResponse, 0, strlen(serverResponse));
+        LogEvent(tdL->threadID, "Response delivered.");
+        memset(clientRequest, 0, strlen(clientRequest));
+        free(serverResponse);
     }
 
-    free(serverResponse);
     close(tdL->threadClient);
     return (NULL);
 }
@@ -433,7 +436,7 @@ void LogEvent(int clientId, const char *event)
 
 void LogRequestEvent(int clientId, const ClientRequest clientRequestStructure)
 {
-    int len = snprintf(NULL, 0, "[Auth: %d][Cmd: %s] - %s", clientRequestStructure.authorized,
+    int len = snprintf(NULL, 0, "[REQUEST] - [Auth: %d][Command: %s][Content: %s]", clientRequestStructure.authorized,
                        clientRequestStructure.command, clientRequestStructure.content);
     if (len <= 0)
     {
@@ -442,15 +445,16 @@ void LogRequestEvent(int clientId, const ClientRequest clientRequestStructure)
 
     char *event = NULL;
     event = (char *)malloc(len + 1);
-    snprintf(event, len + 1, "[Auth: %d][Cmd: %s] - %s", clientRequestStructure.authorized, clientRequestStructure.command,
+    snprintf(event, len + 1, "[REQUEST] - [Auth: %d][Command: %s][Content: %s]", clientRequestStructure.authorized, clientRequestStructure.command,
              clientRequestStructure.content);
 
     LogEvent(clientId, event);
+    free(event);
 }
 
 void LogResponseEvent(int clientId, const ServerResponse serverResponseStructure)
 {
-    int len = snprintf(NULL, 0, "[Status: %d] - %s", serverResponseStructure.status,
+    int len = snprintf(NULL, 0, "[RESPONSE] - [Status: %d][Content: %s]", serverResponseStructure.status,
                        serverResponseStructure.content);
     if (len <= 0)
     {
@@ -459,9 +463,11 @@ void LogResponseEvent(int clientId, const ServerResponse serverResponseStructure
 
     char *event = NULL;
     event = (char *)malloc(len + 1);
-    snprintf(event, len + 1, "[Status: %d] - %s", serverResponseStructure.status,
+    snprintf(event, len + 1, "[RESPONSE] - [Status: %d][Content: %s]", serverResponseStructure.status,
              serverResponseStructure.content);
+
     LogEvent(clientId, event);
+    free(event);
 }
 
 void FreeParsedStrings(char **strings, int numStrings)

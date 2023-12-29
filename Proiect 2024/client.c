@@ -134,8 +134,18 @@ int RenderFirstPage()
 
             attron(COLOR_PAIR(2));
             mvaddstr(Y_PRINT - 2, X_PRINT, "Press any button to continue or \'q\' to quit.");
-            mvaddstr(Y_PRINT, X_PRINT, serverResponse.content);
+            if (serverResponse.status == 0)
+            {
+                mvaddstr(Y_PRINT, X_PRINT, "Client Internal Error");
+            }
+            else
+            {
+                mvaddstr(Y_PRINT, X_PRINT, serverResponse.content);
+            }
             attroff(COLOR_PAIR(2));
+
+            memset(userInputs, 0, sizeof(userInputs));
+            free(serverResponse.content);
 
             ch = getch();
 
@@ -179,9 +189,23 @@ int RenderFirstPage()
 
             attron(COLOR_PAIR(2));
             mvaddstr(Y_PRINT - 2, X_PRINT, "Press any button to continue or \'q\' to quit.");
-            mvaddstr(Y_PRINT, X_PRINT, serverResponse.content);
+            if (serverResponse.status == 0)
+            {
+                mvaddstr(Y_PRINT, X_PRINT, "Client Internal Error");
+            }
+            else
+            {
+                mvaddstr(Y_PRINT, X_PRINT, serverResponse.content);
+            }
+
             attroff(COLOR_PAIR(2));
 
+            for (int i = 0; i < 5; i++)
+            {
+                memset(userInputs[i], 0, sizeof(userInputs[i]));
+            }
+
+            free(serverResponse.content);
             ch = getch();
 
             break;
@@ -244,6 +268,8 @@ ServerResponse SendRequest(char *request)
         struct ServerResponse errorResponse;
         errorResponse.status = 400;
         errorResponse.content = "[CLIENT][ERROR] Error at send()!\n";
+
+        free(request);
         return errorResponse;
     }
 
@@ -253,11 +279,14 @@ ServerResponse SendRequest(char *request)
         struct ServerResponse errorResponse;
         errorResponse.status = 400;
         errorResponse.content = "[CLIENT][ERROR] Error at recv()!\n";
+
+        free(request);
         return errorResponse;
     }
     else if (noOfBytesRead > 0)
     {
         struct ServerResponse responseStructure = ParseServerResponse(serverResponse);
+        free(request);
         return responseStructure;
     }
 }
@@ -299,6 +328,7 @@ ServerResponse SendLoginRequest(char userInputs[][50])
 
     char *clientRequest = CreateClientRequest("Login", content, authorized);
 
+    free(content);
     return SendRequest(clientRequest);
 }
 
@@ -329,7 +359,7 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
     }
 
     char *content = NULL;
-    int len = snprintf(NULL, 0, "%s#%s#%s#%s#%s", 
+    int len = snprintf(NULL, 0, "%s#%s#%s#%s#%s",
                        userInputs[0], userInputs[1], userInputs[2], userInputs[3], userInputs[4]);
 
     if (len <= 0)
@@ -341,7 +371,7 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
     }
 
     content = (char *)malloc(len + 1);
-    snprintf(content, len + 1, "%s#%s#%s#%s#%s", 
+    snprintf(content, len + 1, "%s#%s#%s#%s#%s",
              userInputs[0], userInputs[1], userInputs[2], userInputs[3], userInputs[4]);
 
     char *clientRequest = CreateClientRequest("Register", content, authorized);
