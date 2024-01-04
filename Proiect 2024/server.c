@@ -37,6 +37,9 @@ static void *treat(void *);
 char *ProcessClientRequest(const int clientId, ClientRequest requestStructure);
 ServerResponse ProccesLoginRequest(const int clientId, ClientRequest clientRequest);
 ServerResponse ProccesRegisterRequest(const int clientId, ClientRequest clientRequest);
+ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientRequest);
+
+int PrepareViewUsersContent(char **content, const char **usernames, int usernamesCount);
 
 int FileExists(const char *filename);
 int CreateFile();
@@ -211,10 +214,8 @@ char *ProcessClientRequest(const int clientId, ClientRequest requestStructure)
         case 1:
             responseStructure = ProccesRegisterRequest(clientId, requestStructure);
             break;
-        case 3:
+        case 2:
             return CreateServerResponse(200, "Quit");
-        case 4:
-            return CreateServerResponse(200, "Help");
         default:
             return CreateServerResponse(401, "Unauthorized.");
         }
@@ -225,24 +226,16 @@ char *ProcessClientRequest(const int clientId, ClientRequest requestStructure)
         {
         case 0:
             return CreateServerResponse(409, "Already logged in.");
-            break;
         case 1:
             return CreateServerResponse(409, "Already logged in.");
-            break;
         case 2:
-            return CreateServerResponse(200, "Logout");
-            break;
-        case 3:
             return CreateServerResponse(200, "Quit");
             break;
-        case 4:
-            return CreateServerResponse(200, "Help");
-            break;
-        case 5:
+        case 3:
             return CreateServerResponse(200, "Select_User");
             break;
-        case 6:
-            return CreateServerResponse(200, "View_User");
+        case 4:
+            responseStructure = ProcessViewUsersRequest(clientId, requestStructure);
             break;
         default:
             break;
@@ -271,7 +264,7 @@ ServerResponse ProccesLoginRequest(const int clientId, ClientRequest clientReque
     }
     LogEvent(clientId, "Login - Succesfully Parse Content");
 
-    int usersCountByUsernameAndPassword = GetUsersByUsernameAndPassword(DB, userInputs[0], userInputs[1]);
+    int usersCountByUsernameAndPassword = GetUsersCountByUsernameAndPassword(DB, userInputs[0], userInputs[1]);
     switch (usersCountByUsernameAndPassword)
     {
     case 0:
@@ -281,7 +274,7 @@ ServerResponse ProccesLoginRequest(const int clientId, ClientRequest clientReque
         break;
     case 1:
         serverResponseStructure.status = 200;
-        serverResponseStructure.content = "Ok.";
+        serverResponseStructure.content = strdup(userInputs[0]);
         LogEvent(clientId, "Login - Database - GetUsersCountByUsernameAndPassword - Count = 1");
         break;
     default:
@@ -323,7 +316,7 @@ ServerResponse ProccesRegisterRequest(const int clientId, ClientRequest clientRe
         LogEvent(clientId, "Register - Database - GetUsersCountByUsername - Count Bigger > 0");
         return serverResponseStructure;
     }
-    if (usersCountByUsername < -1)
+    if (usersCountByUsername <= -1)
     {
         serverResponseStructure.status = 500;
         serverResponseStructure.content = "Server Internal Error!";
@@ -339,17 +332,117 @@ ServerResponse ProccesRegisterRequest(const int clientId, ClientRequest clientRe
     {
         serverResponseStructure.status = 500;
         serverResponseStructure.content = "Internal Server Error!";
-        LogEvent(clientId, "Register - Database - Insert - Succesful");
+        LogEvent(clientId, "Register - Database - Insert - Unsuccesful");
     }
     else
     {
         serverResponseStructure.status = 201;
-        serverResponseStructure.content = "Created.";
-        LogEvent(clientId, "Register - Database - Insert - Unsuccesful");
+        serverResponseStructure.content = strdup(userInputs[0]);
+        LogEvent(clientId, "Register - Database - Insert - Succesful");
     }
 
     FreeParsedStrings(userInputs, numberOfInputs);
     return serverResponseStructure;
+}
+
+ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientRequest)
+{
+    struct ServerResponse serverResponseStructure;
+
+    char *currentUser = strdup(clientRequest.content);
+
+    int userExists = GetUsersCountByUsername(DB, currentUser);
+    if (userExists != 1)
+    {
+        serverResponseStructure.status = 400;
+        serverResponseStructure.content = "Username doesn't exists!";
+        LogEvent(clientId, "View_Users - Database - GetUsersCountByUsername - Count != 1");
+
+        return serverResponseStructure;
+    }
+
+    int usersCount = GetUsersCount(DB);
+    if (usersCount == 1)
+    {
+        serverResponseStructure.status = 200;
+        serverResponseStructure.content = "";
+        LogEvent(clientId, "View_Users - Database - GetUsersCount - Count == 1");
+
+        return serverResponseStructure;
+    }
+    else if (usersCount <= 0)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error";
+        LogEvent(clientId, "View_Users - Database - GetUsersCount - Unsuccesful");
+
+        return serverResponseStructure;
+    }
+
+    char **usernames = (char **)malloc((usersCount - 1) * sizeof(char *));
+
+    int usernamesCount = GetUsernamesWhereNotEqualUsername(DB, usernames, currentUser, usersCount);
+    if (usernamesCount <= -1)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Internal Server Error!";
+        LogEvent(clientId, "View_Users - Database - GetUsernames - Unsuccesful");
+
+        return serverResponseStructure;
+    }
+    LogEvent(clientId, "View_Users - Database - GetUsernames - Succesful");
+
+    char *content = NULL;
+    int result = PrepareViewUsersContent(&content, usernames, usernamesCount);
+    if (result != 0)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error!";
+        LogEvent(clientId, "View_Users - PrepareContent - Allocation Error");
+    }
+    else
+    {
+        serverResponseStructure.status = 200;
+        serverResponseStructure.content = content;
+        LogEvent(clientId, "View_Users - PrepareContent - Succesful");
+    }
+
+    free(content);
+    FreeParsedStrings(usernames, usernamesCount);
+
+    return serverResponseStructure;
+}
+
+int PrepareViewUsersContent(char **content, const char **usernames, int usernamesCount)
+{
+    int contentLength = 0;
+    for (int i = 0; i < usernamesCount; i++)
+    {
+        int usernameLength = snprintf(NULL, 0, "%s", usernames[i]);
+        if (usernameLength <= 0)
+        {
+            return -1;
+        }
+        contentLength += usernameLength;
+        if (i < usernamesCount - 1)
+        {
+            contentLength += 1;
+        }
+    }
+
+    *content = (char *)malloc(contentLength + 1);
+
+    int offset = 0;
+    for (int i = 0; i < usernamesCount; i++)
+    {
+        offset += snprintf((*content + offset), contentLength - offset + 1, "%s", usernames[i]);
+        if (i < usernamesCount - 1)
+        {
+            offset += snprintf((*content + offset), contentLength - offset + 1, "#");
+        }
+    }
+
+    return 0;
 }
 
 // Helper functions

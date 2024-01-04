@@ -44,6 +44,35 @@ int OpenDatabase(sqlite3 **db, const char *databaseName)
     return 0;
 }
 
+int GetUsersCount(sqlite3 *db)
+{
+    sqlite3_stmt *stmt;
+    char *err;
+
+    int rc = sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM users", -1, &stmt, NULL);
+    if (rc != SQLITE_OK)
+    {
+        printf("[Error][Database] Users count query prepare error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW)
+    {
+        printf("[Error][Database] Users count query execute error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+    int usersCount = sqlite3_column_int(stmt, 0);
+
+    sqlite3_clear_bindings(stmt);
+    sqlite3_reset(stmt);
+    sqlite3_finalize(stmt);
+
+    return usersCount;
+}
+
 int GetUsersCountByUsername(sqlite3 *db, const char *username)
 {
     sqlite3_stmt *stmt;
@@ -74,7 +103,7 @@ int GetUsersCountByUsername(sqlite3 *db, const char *username)
     return usersCount;
 }
 
-int GetUsersByUsernameAndPassword(sqlite3 *db, char *username, char *password)
+int GetUsersCountByUsernameAndPassword(sqlite3 *db, const char *username, const char *password)
 {
     sqlite3_stmt *stmt;
     char *err;
@@ -103,6 +132,50 @@ int GetUsersByUsernameAndPassword(sqlite3 *db, char *username, char *password)
     sqlite3_finalize(stmt);
 
     return usersCount;
+}
+
+int GetUsernamesWhereNotEqualUsername(sqlite3 *db, char **usernames, const char *username, const int usersCount)
+{
+    sqlite3_stmt *stmt;
+    char *err;
+
+    int rc = sqlite3_prepare_v2(db, "SELECT username FROM users WHERE username!=?", -1, &stmt, NULL);
+    if (rc != SQLITE_OK)
+    {
+        printf("[Error][Database] GET usernames query prepare error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+
+    rc = sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW)
+    {
+        printf("[Error][Database] GET usernames query execute error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+
+    int i = 0;
+    while (i < usersCount - 1)
+    {
+        usernames[i] = strdup((char *)sqlite3_column_text(stmt, 0));
+        usernames[i][strlen(usernames[i])] = '\0';
+        rc = sqlite3_step(stmt);
+        i++;
+    }
+
+    if (rc != SQLITE_DONE)
+    {
+        printf("[Error][Database] GET usernames query finish error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+
+    sqlite3_clear_bindings(stmt);
+    sqlite3_reset(stmt);
+    sqlite3_finalize(stmt);
+    return i;
 }
 
 int InsertUser(sqlite3 *db, const char *username, const char *firstName, const char *lastName, const char *password)

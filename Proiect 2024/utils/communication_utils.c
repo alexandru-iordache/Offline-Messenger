@@ -4,7 +4,7 @@
 
 #include "communication_types.h"
 
-const char *commands[] = {"Login", "Register", "Logout", "Quit", "Help", "Select_User", "View_Users"};
+const char *commands[] = {"Login", "Register", "Quit", "Select_User", "View_Users"};
 
 int RetrieveCommandNumber(const char *command)
 {

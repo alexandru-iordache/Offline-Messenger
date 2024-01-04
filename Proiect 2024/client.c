@@ -17,7 +17,7 @@
 #include "utils/communication_utils.h"
 
 // UI constants
-#define X_PRINT 14
+#define X_PRINT 8
 
 // SOCKET constants
 #define PORT 8989
@@ -25,16 +25,24 @@
 
 // CLIENT variables
 int socketDescriptor;
+WINDOW *window;
+char *loggedUsername = NULL;
 unsigned short int authorized = 0;
 
 // UI functions
 int RenderFirstPage();
+char RenderLoginView();
+char RenderRegisterView();
+
+int RenderSecondPage();
+char RenderViewUsersView();
 
 // Communication functions
 unsigned short int ValidateUserInputs(const char *command, int length, char userInputs[][50]);
 ServerResponse SendRequest(char *request);
 ServerResponse SendLoginRequest(char userInputs[][50]);
 ServerResponse SendRegisterRequest(char userInputs[][50]);
+ServerResponse SendViewUsersRequest();
 
 int main()
 {
@@ -61,9 +69,14 @@ int main()
     initscr();
     cbreak();               // Disable line buffering
     noecho();               // Don't print user input
-    keypad(stdscr, TRUE);   // Enable special keys
-    scrollok(stdscr, TRUE); // Enable scrolling
+    keypad(window, TRUE);   // Enable special keys
+    scrollok(window, TRUE); // Enable scrolling
     curs_set(0);            // Hide cursor
+
+    int yMax, xMax;
+    getmaxyx(stdscr, yMax, xMax);
+
+    window = newwin(yMax / 2, xMax / 2, yMax / 4, xMax / 4);
 
     // Set up colors if supported
     if (has_colors())
@@ -77,9 +90,15 @@ int main()
     while (signal != -1)
     {
         signal = RenderFirstPage();
+
+        if (signal == -1)
+        {
+            continue;
+        }
+
+        signal = RenderSecondPage();
     }
 
-    // Clean up and exit
     endwin();
     return 0;
 }
@@ -87,128 +106,192 @@ int main()
 // UI functions
 int RenderFirstPage()
 {
-    clear();
+    wclear(window);
+    box(window, 0, 0);
 
-    attron(COLOR_PAIR(1));
-    mvprintw(2, X_PRINT, "[1] Login");
-    attroff(COLOR_PAIR(1));
+    mvwprintw(window, 2, X_PRINT + 12, "Offline Messenger");
 
-    attron(COLOR_PAIR(1));
-    mvprintw(4, X_PRINT, "[2] Register");
-    attroff(COLOR_PAIR(1));
+    wattron(window, COLOR_PAIR(1));
+    mvwprintw(window, 6, X_PRINT, "[1] Login");
+    mvwprintw(window, 8, X_PRINT, "[2] Register");
+    wattroff(window, COLOR_PAIR(1));
 
-    attron(COLOR_PAIR(2));
-    mvprintw(6, X_PRINT, "[Q] Quit");
-    attroff(COLOR_PAIR(2));
+    wattron(window, COLOR_PAIR(2));
+    mvwprintw(window, 10, X_PRINT, "[Q] Quit");
+    wattroff(window, COLOR_PAIR(2));
 
-    const int Y_PRINT = 10;
-
-    int ch = getch();
-    while ((ch != 'q') && (ch != 'Q'))
+    int ch = wgetch(window);
+    if ((ch != 'q') && (ch != 'Q'))
     {
-        // Process button presses
-        if (ch == '1' || ch == '1')
+        if (ch == '1')
         {
-            attron(COLOR_PAIR(1));
-            mvprintw(Y_PRINT - 2, X_PRINT, "Login Button Pressed!");
-
-            char userInputs[2][50];
-
-            echo();
-            mvprintw(Y_PRINT + 2, X_PRINT, "Enter Username: ");
-            getstr(userInputs[0]);
-            noecho();
-
-            mvprintw(Y_PRINT + 3, X_PRINT, "Enter Password: ");
-            getstr(userInputs[1]);
-
-            attroff(COLOR_PAIR(1));
-
-            struct ServerResponse serverResponse = SendLoginRequest(userInputs);
-
-            if (serverResponse.status == 200)
-            {
-                authorized = 1;
-                return 0;
-            }
-
-            attron(COLOR_PAIR(2));
-            mvaddstr(Y_PRINT - 2, X_PRINT, "Press any button to continue or \'q\' to quit.");
-            if (serverResponse.status == 0)
-            {
-                mvaddstr(Y_PRINT, X_PRINT, "Client Internal Error");
-            }
-            else
-            {
-                mvaddstr(Y_PRINT, X_PRINT, serverResponse.content);
-            }
-            attroff(COLOR_PAIR(2));
-
-            memset(userInputs, 0, sizeof(userInputs));
-            free(serverResponse.content);
-
-            ch = getch();
-
-            break;
+            ch = RenderLoginView();
         }
-        else if (ch == '2' || ch == '2')
+        else if (ch == '2')
         {
-            char userInputs[5][50];
+            ch = RenderRegisterView();
+        }
+    }
 
-            attron(COLOR_PAIR(1));
-            mvprintw(Y_PRINT, X_PRINT, "Register Button Pressed!");
+    if (ch == 0)
+    {
+        return 0;
+    }
+    else if (ch == 'q' || ch == 'Q')
+    {
+        return -1;
+    }
 
-            echo();
+    RenderFirstPage();
+}
 
-            mvprintw(Y_PRINT + 2, X_PRINT, "Enter Username: ");
-            getstr(userInputs[0]);
+char RenderLoginView()
+{
+    wclear(window);
+    box(window, 0, 0);
 
-            mvprintw(Y_PRINT + 3, X_PRINT, "Enter First Name: ");
-            getstr(userInputs[1]);
+    const int Y_PRINT = 4;
+    char userInputs[2][50];
 
-            mvprintw(Y_PRINT + 4, X_PRINT, "Enter Last Name: ");
-            getstr(userInputs[2]);
+    mvwprintw(window, Y_PRINT - 2, X_PRINT + 12, "Login Page");
 
-            noecho();
+    wattron(window, COLOR_PAIR(1));
 
-            mvprintw(Y_PRINT + 5, X_PRINT, "Enter Password: ");
-            getstr(userInputs[3]);
+    echo();
+    mvwprintw(window, Y_PRINT + 3, X_PRINT, "Enter Username: ");
+    wgetstr(window, userInputs[0]);
+    noecho();
 
-            mvprintw(Y_PRINT + 6, X_PRINT, "Confirm Password: ");
-            getstr(userInputs[4]);
+    mvwprintw(window, Y_PRINT + 4, X_PRINT, "Enter Password: ");
+    wgetstr(window, userInputs[1]);
 
-            attroff(COLOR_PAIR(1));
+    wattroff(window, COLOR_PAIR(1));
 
-            struct ServerResponse serverResponse = SendRegisterRequest(userInputs);
+    struct ServerResponse serverResponse = SendLoginRequest(userInputs);
+    if (serverResponse.status == 200)
+    {
+        authorized = 1;
+        loggedUsername = strdup(serverResponse.content);
+        return 0;
+    }
 
-            if (serverResponse.status == 201)
-            {
-                authorized = 1;
-                return 0;
-            }
+    wattron(window, COLOR_PAIR(2));
+    mvwaddstr(window, Y_PRINT, X_PRINT, "Press any button to continue or \'q\' to quit.");
+    if (serverResponse.status == 0)
+    {
+        mvwaddstr(window, Y_PRINT + 1, X_PRINT, "Client Internal Error");
+    }
+    else
+    {
+        mvwaddstr(window, Y_PRINT + 1, X_PRINT, serverResponse.content);
+    }
+    wattroff(window, COLOR_PAIR(2));
 
-            attron(COLOR_PAIR(2));
-            mvaddstr(Y_PRINT - 2, X_PRINT, "Press any button to continue or \'q\' to quit.");
-            if (serverResponse.status == 0)
-            {
-                mvaddstr(Y_PRINT, X_PRINT, "Client Internal Error");
-            }
-            else
-            {
-                mvaddstr(Y_PRINT, X_PRINT, serverResponse.content);
-            }
+    memset(userInputs, 0, sizeof(userInputs));
+    free(serverResponse.content);
 
-            attroff(COLOR_PAIR(2));
+    char ch = wgetch(window);
+    return ch;
+}
 
-            for (int i = 0; i < 5; i++)
-            {
-                memset(userInputs[i], 0, sizeof(userInputs[i]));
-            }
+char RenderRegisterView()
+{
+    wclear(window);
+    box(window, 0, 0);
 
-            free(serverResponse.content);
-            ch = getch();
+    const int Y_PRINT = 4;
+    char userInputs[5][50];
 
-            break;
+    mvwprintw(window, Y_PRINT - 2, X_PRINT + 12, "Register Page");
+
+    wattron(window, COLOR_PAIR(1));
+    echo();
+
+    mvwprintw(window, Y_PRINT + 3, X_PRINT, "Enter Username: ");
+    wgetstr(window, userInputs[0]);
+
+    mvwprintw(window, Y_PRINT + 4, X_PRINT, "Enter First Name: ");
+    wgetstr(window, userInputs[1]);
+
+    mvwprintw(window, Y_PRINT + 5, X_PRINT, "Enter Last Name: ");
+    wgetstr(window, userInputs[2]);
+
+    noecho();
+
+    mvwprintw(window, Y_PRINT + 6, X_PRINT, "Enter Password: ");
+    wgetstr(window, userInputs[3]);
+
+    mvwprintw(window, Y_PRINT + 7, X_PRINT, "Confirm Password: ");
+    wgetstr(window, userInputs[4]);
+
+    wattroff(window, COLOR_PAIR(1));
+
+    struct ServerResponse serverResponse = SendRegisterRequest(userInputs);
+    if (serverResponse.status == 201)
+    {
+        authorized = 1;
+        loggedUsername = strdup(serverResponse.content);
+        return 0;
+    }
+
+    wattron(window, COLOR_PAIR(2));
+    mvwaddstr(window, Y_PRINT, X_PRINT, "Press any button to continue or \'q\' to quit.");
+    if (serverResponse.status == 0)
+    {
+        mvwaddstr(window, Y_PRINT + 1, X_PRINT, "Client Internal Error");
+    }
+    else
+    {
+        mvwaddstr(window, Y_PRINT + 1, X_PRINT, serverResponse.content);
+    }
+    wattroff(window, COLOR_PAIR(2));
+
+    for (int i = 0; i < 5; i++)
+    {
+        memset(userInputs[i], 0, sizeof(userInputs[i]));
+    }
+
+    free(serverResponse.content);
+
+    char ch = wgetch(window);
+    return ch;
+}
+
+int RenderSecondPage()
+{
+    wclear(window);
+    box(window, 0, 0);
+
+    const int Y_PRINT = 2;
+
+    mvwprintw(window, Y_PRINT, X_PRINT + 12, "Offline Messenger");
+
+    wattron(window, COLOR_PAIR(1));
+    mvwprintw(window, Y_PRINT + 4, X_PRINT, "[1] View Users");
+    mvwprintw(window, Y_PRINT + 6, X_PRINT, "[2] View Unread Messages");
+    wattroff(window, COLOR_PAIR(1));
+
+    wattron(window, COLOR_PAIR(2));
+    mvwprintw(window, Y_PRINT + 8, X_PRINT, "[L] Logout");
+    mvwprintw(window, Y_PRINT + 10, X_PRINT, "[Q] Quit");
+    wattroff(window, COLOR_PAIR(2));
+
+    int ch = wgetch(window);
+    if ((ch != 'q') && (ch != 'Q'))
+    {
+        if (ch == '1')
+        {
+            ch = RenderViewUsersView();
+        }
+        else if (ch == '2')
+        {
+            RenderSecondPage();
+        }
+        else if (ch == 'L' || ch == 'l')
+        {
+            authorized = 0;
+            loggedUsername = NULL;
+            return 0;
         }
     }
 
@@ -217,7 +300,19 @@ int RenderFirstPage()
         return -1;
     }
 
-    RenderFirstPage();
+    RenderSecondPage();
+}
+
+char RenderViewUsersView()
+{
+    wclear(window);
+    box(window, 0, 0);
+
+    const int Y_PRINT = 2;
+
+    mvwprintw(window, Y_PRINT, X_PRINT + 12, "View Users");
+
+    ServerResponse serverResponse = SendViewUsersRequest();
 }
 
 // Communication functions
@@ -365,8 +460,8 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
     if (len <= 0)
     {
         struct ServerResponse errorResponse;
-        errorResponse.status = 400;
-        errorResponse.content = "Unrecognized inputs error.\n";
+        errorResponse.status = 0;
+        errorResponse.content = "Client Internal Error";
         return errorResponse;
     }
 
@@ -376,5 +471,28 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
 
     char *clientRequest = CreateClientRequest("Register", content, authorized);
 
+    free(content);
+    return SendRequest(clientRequest);
+}
+
+ServerResponse SendViewUsersRequest()
+{
+    char *content = NULL;
+    int len = snprintf(NULL, 0, "%s", loggedUsername);
+
+    if (len <= 0)
+    {
+        struct ServerResponse errorResponse;
+        errorResponse.status = 0;
+        errorResponse.content = "Client Internal Error";
+        return errorResponse;
+    }
+
+    content = (char *)malloc(len + 1);
+    snprintf(content, len + 1, "%s", loggedUsername);
+
+    char *clientRequest = CreateClientRequest("View_Users", content, authorized);
+
+    free(content);
     return SendRequest(clientRequest);
 }
