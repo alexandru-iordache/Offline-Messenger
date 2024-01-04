@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include <pthread.h>
 
@@ -36,12 +37,14 @@ char RenderRegisterView();
 
 int RenderSecondPage();
 char RenderViewUsersView();
+char RenderSelectUsersView();
 
 // Communication functions
 unsigned short int ValidateUserInputs(const char *command, int length, char userInputs[][50]);
 ServerResponse SendRequest(char *request);
 ServerResponse SendLoginRequest(char userInputs[][50]);
 ServerResponse SendRegisterRequest(char userInputs[][50]);
+ServerResponse SendGetUsersCountRequest();
 ServerResponse SendViewUsersRequest();
 
 int main()
@@ -311,12 +314,34 @@ char RenderViewUsersView()
     const int Y_PRINT = 2;
 
     mvwprintw(window, Y_PRINT, X_PRINT + 16, "View Users");
+    ServerResponse getUsersCountServerResponse = SendGetUsersCountRequest();
+    if (getUsersCountServerResponse.status != 200)
+    {
+        wattron(window, COLOR_PAIR(2));
+        mvwaddstr(window, Y_PRINT + 4, X_PRINT, "Press any button to return.");
+        mvwaddstr(window, Y_PRINT + 5, X_PRINT, getUsersCountServerResponse.content);   
+        wattroff(window, COLOR_PAIR(2));
 
-    ServerResponse serverResponse = SendViewUsersRequest();
+        char ch = wgetch(window);
+        return -1;
+    }
+
+    ServerResponse viewUsersServerResponse = SendViewUsersRequest();
+    if (viewUsersServerResponse.status != 200)
+    {
+        wattron(window, COLOR_PAIR(2));
+        mvwaddstr(window, Y_PRINT + 4, X_PRINT, "Press any button to return.");
+        mvwaddstr(window, Y_PRINT + 5, X_PRINT, viewUsersServerResponse.content);   
+        wattroff(window, COLOR_PAIR(2));
+
+        char ch = wgetch(window);
+        return -1;
+    }
 
     int numOfUsers = 0;
-    char **users = ParseContent(serverResponse.content, &numOfUsers);
-    
+    char **users = ParseContent(viewUsersServerResponse.content, &numOfUsers);
+
+    free(viewUsersServerResponse.content);
     int user_Y_PRINT = Y_PRINT + 4;
     for (int i = 0; i < numOfUsers; i++)
     {
@@ -324,14 +349,14 @@ char RenderViewUsersView()
         if (len <= 0)
         {
             wattron(window, COLOR_PAIR(2));
-            mvwprintw(window, user_Y_PRINT , X_PRINT, "Client Error");
+            mvwprintw(window, user_Y_PRINT, X_PRINT, "Client Error");
             wattroff(window, COLOR_PAIR(2));
             break;
         }
 
         char *userRow = (char *)malloc(len + 1);
         snprintf(userRow, len + 1, "[%d] %s", i, users[i]);
-        
+
         wattron(window, COLOR_PAIR(1));
         mvwprintw(window, user_Y_PRINT, X_PRINT, userRow);
         wattroff(window, COLOR_PAIR(1));
@@ -340,22 +365,39 @@ char RenderViewUsersView()
         user_Y_PRINT += 2;
     }
 
+    wattron(window, COLOR_PAIR(2));
+    mvwprintw(window, Y_PRINT + 20, X_PRINT + 30, "[B] Back");
+    wattroff(window, COLOR_PAIR(2));
+
     char ch = wgetch(window);
     int signal = 0;
     while (signal == 0)
     {
-        if (numOfUsers > 0 && ch >= 0 && ch < numOfUsers)
+        if (isalnum(ch))
         {
-            FreeParsedStrings(users, numOfUsers);
-            return 0;
+            int digit = ch - '0';
+            if (digit >= 0 && digit < numOfUsers)
+            {
+                FreeParsedStrings(users, numOfUsers);
+                return 0;
+            }
+
+            if (ch == 'B' || ch == 'b')
+            {
+                signal = 1;
+                continue;
+            }
+
+            ch = wgetch(window);
         }
         else
         {
-            signal != 1;
+            ch = wgetch(window);
         }
     }
 
     FreeParsedStrings(users, numOfUsers);
+    return -1;
 }
 
 // Communication functions
@@ -516,6 +558,10 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
 
     free(content);
     return SendRequest(clientRequest);
+}
+
+ServerResponse SendGetUsersCountRequest(){
+
 }
 
 ServerResponse SendViewUsersRequest()
