@@ -8,5 +8,7 @@ char *CreateClientRequest(const char *command, const char *content, int authoriz
 char *CreateServerResponse(int status, const char *content);
 ClientRequest ParseClientRequest(const char *request);
 ServerResponse ParseServerResponse(const char *response);
+char **ParseContent(const char *content, int *numberOfInputs);
+void FreeParsedStrings(char **strings, int numStrings);
 
 #endif

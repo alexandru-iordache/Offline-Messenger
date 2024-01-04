@@ -310,9 +310,52 @@ char RenderViewUsersView()
 
     const int Y_PRINT = 2;
 
-    mvwprintw(window, Y_PRINT, X_PRINT + 12, "View Users");
+    mvwprintw(window, Y_PRINT, X_PRINT + 16, "View Users");
 
     ServerResponse serverResponse = SendViewUsersRequest();
+
+    int numOfUsers = 0;
+    char **users = ParseContent(serverResponse.content, &numOfUsers);
+    
+    int user_Y_PRINT = Y_PRINT + 4;
+    for (int i = 0; i < numOfUsers; i++)
+    {
+        int len = snprintf(NULL, 0, "[%d] %s", i, users[i]);
+        if (len <= 0)
+        {
+            wattron(window, COLOR_PAIR(2));
+            mvwprintw(window, user_Y_PRINT , X_PRINT, "Client Error");
+            wattroff(window, COLOR_PAIR(2));
+            break;
+        }
+
+        char *userRow = (char *)malloc(len + 1);
+        snprintf(userRow, len + 1, "[%d] %s", i, users[i]);
+        
+        wattron(window, COLOR_PAIR(1));
+        mvwprintw(window, user_Y_PRINT, X_PRINT, userRow);
+        wattroff(window, COLOR_PAIR(1));
+
+        free(userRow);
+        user_Y_PRINT += 2;
+    }
+
+    char ch = wgetch(window);
+    int signal = 0;
+    while (signal == 0)
+    {
+        if (numOfUsers > 0 && ch >= 0 && ch < numOfUsers)
+        {
+            FreeParsedStrings(users, numOfUsers);
+            return 0;
+        }
+        else
+        {
+            signal != 1;
+        }
+    }
+
+    FreeParsedStrings(users, numOfUsers);
 }
 
 // Communication functions
@@ -408,7 +451,7 @@ ServerResponse SendLoginRequest(char userInputs[][50])
     }
 
     char *content = NULL;
-    int len = snprintf(NULL, 0, "%s#%s", userInputs[0], userInputs[1]);
+    int len = snprintf(NULL, 0, "%s#%s#", userInputs[0], userInputs[1]);
 
     if (len <= 0)
     {
@@ -419,7 +462,7 @@ ServerResponse SendLoginRequest(char userInputs[][50])
     }
 
     content = (char *)malloc(len + 1);
-    snprintf(content, len + 1, "%s#%s", userInputs[0], userInputs[1]);
+    snprintf(content, len + 1, "%s#%s#", userInputs[0], userInputs[1]);
 
     char *clientRequest = CreateClientRequest("Login", content, authorized);
 
@@ -454,7 +497,7 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
     }
 
     char *content = NULL;
-    int len = snprintf(NULL, 0, "%s#%s#%s#%s#%s",
+    int len = snprintf(NULL, 0, "%s#%s#%s#%s#%s#",
                        userInputs[0], userInputs[1], userInputs[2], userInputs[3], userInputs[4]);
 
     if (len <= 0)
@@ -466,7 +509,7 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
     }
 
     content = (char *)malloc(len + 1);
-    snprintf(content, len + 1, "%s#%s#%s#%s#%s",
+    snprintf(content, len + 1, "%s#%s#%s#%s#%s#",
              userInputs[0], userInputs[1], userInputs[2], userInputs[3], userInputs[4]);
 
     char *clientRequest = CreateClientRequest("Register", content, authorized);

@@ -123,3 +123,42 @@ ServerResponse ParseServerResponse(const char *response)
 
     return responseStructure;
 }
+
+void FreeParsedStrings(char **strings, int numStrings)
+{
+    for (int i = 0; i < numStrings; i++)
+    {
+        free(strings[i]);
+    }
+    free(strings);
+}
+
+char **ParseContent(const char *content, int *numberOfInputs)
+{
+    for (const char *ptr = content; *ptr != '\0'; ++ptr)
+    {
+        if (*ptr == '#')
+        {
+            (*numberOfInputs)++;
+        }
+    }
+
+    if (*numberOfInputs <= 0)
+    {
+        return NULL;
+    }
+
+    char **result = (char **)malloc((*numberOfInputs) * sizeof(char *));
+
+    int i = 0;
+    char *token = strtok((char *)content, "#");
+    while (token != NULL)
+    {
+        result[i] = strdup(token);
+
+        token = strtok(NULL, "#");
+        i++;
+    }
+
+    return result;
+}

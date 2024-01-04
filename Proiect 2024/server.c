@@ -39,7 +39,7 @@ ServerResponse ProccesLoginRequest(const int clientId, ClientRequest clientReque
 ServerResponse ProccesRegisterRequest(const int clientId, ClientRequest clientRequest);
 ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientRequest);
 
-int PrepareViewUsersContent(char **content, const char **usernames, int usernamesCount);
+char *PrepareViewUsersContent(const char **usernames, int usernamesCount);
 
 int FileExists(const char *filename);
 int CreateFile();
@@ -48,8 +48,6 @@ void LogEvent(int clientId, const char *event);
 void LogRequestEvent(int clientId, const ClientRequest clientRequestStructure);
 void LogResponseEvent(int clientId, const ServerResponse serverResponseStructure);
 
-char **ParseContent(const char *content, int *numberOfInputs);
-void FreeParsedStrings(char **strings, int numStrings);
 int main()
 {
     if (FileExists(DATABASE_NAME))
@@ -250,7 +248,7 @@ ServerResponse ProccesLoginRequest(const int clientId, ClientRequest clientReque
 {
     struct ServerResponse serverResponseStructure;
 
-    int numberOfInputs = 1;
+    int numberOfInputs = 0;
     char **userInputs = ParseContent(clientRequest.content, &numberOfInputs);
 
     if (userInputs == NULL || numberOfInputs != 2)
@@ -292,7 +290,7 @@ ServerResponse ProccesRegisterRequest(const int clientId, ClientRequest clientRe
 {
     struct ServerResponse serverResponseStructure;
 
-    int numberOfInputs = 1;
+    int numberOfInputs = 0;
     char **userInputs = ParseContent(clientRequest.content, &numberOfInputs);
 
     if (userInputs == NULL || numberOfInputs != 5)
@@ -392,9 +390,8 @@ ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientR
     }
     LogEvent(clientId, "View_Users - Database - GetUsernames - Succesful");
 
-    char *content = NULL;
-    int result = PrepareViewUsersContent(&content, usernames, usernamesCount);
-    if (result != 0)
+    char *content = PrepareViewUsersContent(usernames, usernamesCount);
+    if (content == NULL)
     {
         serverResponseStructure.status = 500;
         serverResponseStructure.content = "Server Internal Error!";
@@ -403,7 +400,7 @@ ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientR
     else
     {
         serverResponseStructure.status = 200;
-        serverResponseStructure.content = content;
+        serverResponseStructure.content = strdup(content);
         LogEvent(clientId, "View_Users - PrepareContent - Succesful");
     }
 
@@ -413,36 +410,36 @@ ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientR
     return serverResponseStructure;
 }
 
-int PrepareViewUsersContent(char **content, const char **usernames, int usernamesCount)
+char *PrepareViewUsersContent(const char **usernames, int usernamesCount)
 {
     int contentLength = 0;
     for (int i = 0; i < usernamesCount; i++)
     {
-        int usernameLength = snprintf(NULL, 0, "%s", usernames[i]);
+        int usernameLength = snprintf(NULL, 0, "%s#", usernames[i]);
         if (usernameLength <= 0)
         {
-            return -1;
+            return NULL;
         }
         contentLength += usernameLength;
-        if (i < usernamesCount - 1)
-        {
-            contentLength += 1;
-        }
     }
 
-    *content = (char *)malloc(contentLength + 1);
+    char *content = (char *)malloc(contentLength + 1);
+    if (content == NULL)
+    {
+        return NULL;
+    }
 
     int offset = 0;
     for (int i = 0; i < usernamesCount; i++)
     {
-        offset += snprintf((*content + offset), contentLength - offset + 1, "%s", usernames[i]);
-        if (i < usernamesCount - 1)
+        offset += snprintf((content + offset), contentLength - offset + 1, "%s#", usernames[i]);
+        if (offset <= 0)
         {
-            offset += snprintf((*content + offset), contentLength - offset + 1, "#");
+            return NULL;
         }
     }
 
-    return 0;
+    return content;
 }
 
 // Helper functions
@@ -561,43 +558,4 @@ void LogResponseEvent(int clientId, const ServerResponse serverResponseStructure
 
     LogEvent(clientId, event);
     free(event);
-}
-
-void FreeParsedStrings(char **strings, int numStrings)
-{
-    for (int i = 0; i < numStrings; i++)
-    {
-        free(strings[i]);
-    }
-    free(strings);
-}
-
-char **ParseContent(const char *content, int *numberOfInputs)
-{
-    for (const char *ptr = content; *ptr != '\0'; ++ptr)
-    {
-        if (*ptr == '#')
-        {
-            (*numberOfInputs)++;
-        }
-    }
-
-    if (numberOfInputs <= 0)
-    {
-        return NULL;
-    }
-
-    char **result = (char **)malloc((*numberOfInputs) * sizeof(char *));
-
-    int i = 0;
-    char *token = strtok((char *)content, "#");
-    while (token != NULL)
-    {
-        result[i] = strdup(token);
-
-        token = strtok(NULL, "#");
-        i++;
-    }
-
-    return result;
 }
