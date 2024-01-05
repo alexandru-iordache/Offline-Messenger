@@ -38,8 +38,12 @@ char *ProcessClientRequest(const int clientId, ClientRequest requestStructure);
 ServerResponse ProccesLoginRequest(const int clientId, ClientRequest clientRequest);
 ServerResponse ProccesRegisterRequest(const int clientId, ClientRequest clientRequest);
 ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientRequest);
+ServerResponse ProccesViewMessagesRequest(const int clientId, ClientRequest clientRequest);
+ServerResponse ProcessGetUsersCountRequest(const int clientId, ClientRequest clientRequest);
+ServerResponse ProcessGetMessagesCountRequest(const int clientId, ClientRequest clientRequest);
+ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest clientRequest);
 
-char *PrepareViewUsersContent(const char **usernames, int usernamesCount);
+char *PrepareViewContent(const char **rows, int rowsCount);
 
 int FileExists(const char *filename);
 int CreateFile();
@@ -151,13 +155,13 @@ static void *treat(void *arg)
 
     LogEvent(tdL->threadID, "Client connected");
 
-    char clientRequest[2048];
+    char clientRequest[8192];
     char *serverResponse = NULL;
     while (!quit)
     {
         while (1)
         {
-            ssize_t noOfBytesRead = recv(tdL->threadClient, clientRequest, 2048, 0);
+            ssize_t noOfBytesRead = recv(tdL->threadClient, clientRequest, 8192, 0);
             if (noOfBytesRead == -1)
             {
                 printf("[SERVER][ERROR][Client %d] Error at recv().\n", tdL->threadID);
@@ -166,7 +170,6 @@ static void *treat(void *arg)
             }
             clientRequest[noOfBytesRead] = '\0';
 
-            LogEvent(tdL->threadID, "Request received.");
             struct ClientRequest requestStructure = ParseClientRequest(clientRequest);
             LogRequestEvent(tdL->threadID, requestStructure);
 
@@ -180,7 +183,6 @@ static void *treat(void *arg)
             printf("[SERVER][ERROR][Client %d] Error at recv().\n", tdL->threadID);
         }
 
-        LogEvent(tdL->threadID, "Response delivered.");
         memset(clientRequest, 0, strlen(clientRequest));
         free(serverResponse);
     }
@@ -230,10 +232,19 @@ char *ProcessClientRequest(const int clientId, ClientRequest requestStructure)
             return CreateServerResponse(200, "Quit");
             break;
         case 3:
-            return CreateServerResponse(200, "Select_User");
+            responseStructure = ProccesViewMessagesRequest(clientId, requestStructure);
             break;
         case 4:
             responseStructure = ProcessViewUsersRequest(clientId, requestStructure);
+            break;
+        case 5:
+            responseStructure = ProcessGetUsersCountRequest(clientId, requestStructure);
+            break;
+        case 6:
+            responseStructure = ProcessGetMessagesCountRequest(clientId, requestStructure);
+            break;
+        case 7:
+            responseStructure = ProcessInsertMessageRequest(clientId, requestStructure);
             break;
         default:
             break;
@@ -347,9 +358,18 @@ ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientR
 {
     struct ServerResponse serverResponseStructure;
 
-    char *currentUser = strdup(clientRequest.content);
+    int numberOfFields = 0;
+    char **fields = ParseContent(clientRequest.content, &numberOfFields);
+    if (numberOfFields != 2)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error";
+        LogEvent(clientId, "View_Users - ParseContent - Count != 2");
 
-    int userExists = GetUsersCountByUsername(DB, currentUser);
+        return serverResponseStructure;
+    }
+
+    int userExists = GetUsersCountByUsername(DB, fields[0]);
     if (userExists != 1)
     {
         serverResponseStructure.status = 400;
@@ -377,9 +397,9 @@ ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientR
         return serverResponseStructure;
     }
 
-    char **usernames = (char **)malloc((usersCount - 1) * sizeof(char *));
+    char **usernames = (char **)malloc(10 * sizeof(char *));
 
-    int usernamesCount = GetUsernamesWhereNotEqualUsername(DB, usernames, currentUser, usersCount);
+    int usernamesCount = GetUsernamesWhereNotEqualUsername(DB, usernames, fields[0], atoi(fields[1]));
     if (usernamesCount <= -1)
     {
         serverResponseStructure.status = 500;
@@ -390,7 +410,7 @@ ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientR
     }
     LogEvent(clientId, "View_Users - Database - GetUsernames - Succesful");
 
-    char *content = PrepareViewUsersContent(usernames, usernamesCount);
+    char *content = PrepareViewContent(usernames, usernamesCount);
     if (content == NULL)
     {
         serverResponseStructure.status = 500;
@@ -406,21 +426,229 @@ ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientR
 
     free(content);
     FreeParsedStrings(usernames, usernamesCount);
+    FreeParsedStrings(fields, numberOfFields);
 
     return serverResponseStructure;
 }
 
-char *PrepareViewUsersContent(const char **usernames, int usernamesCount)
+ServerResponse ProccesViewMessagesRequest(const int clientId, ClientRequest clientRequest)
+{
+    struct ServerResponse serverResponseStructure;
+
+    int numberOfFields = 0;
+    char **fields = ParseContent(clientRequest.content, &numberOfFields);
+    if (numberOfFields != 3)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error";
+        LogEvent(clientId, "View_Messages - ParseContent - Count != 3");
+
+        return serverResponseStructure;
+    }
+
+    int userExists = GetUsersCountByUsername(DB, fields[1]);
+    if (userExists != 1)
+    {
+        serverResponseStructure.status = 400;
+        serverResponseStructure.content = "Username doesn't exists!";
+        LogEvent(clientId, "View_Messages - Database - GetUsersCountByUsername - Count != 1");
+
+        return serverResponseStructure;
+    }
+
+    char **messages = (char **)malloc(10 * sizeof(char *));
+
+    int messagesCount = GetMessagesBetweenUsers(DB, messages, fields[0], fields[1], atoi(fields[2]));
+    if (messagesCount <= -1)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Internal Server Error!";
+        LogEvent(clientId, "View_Messages - Database - GetMessagesBetweenUsers - Unsuccesful");
+
+        return serverResponseStructure;
+    }
+    LogEvent(clientId, "View_Messages - Database - GetMessagesBetweenUsers - Succesful");
+
+    char *content = PrepareViewContent(messages, messagesCount);
+    if (content == NULL)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error!";
+        LogEvent(clientId, "View_Messages - PrepareContent - Allocation Error");
+    }
+    else
+    {
+        serverResponseStructure.status = 200;
+        serverResponseStructure.content = strdup(content);
+        LogEvent(clientId, "View_Messages - PrepareContent - Succesful");
+    }
+
+    free(content);
+    FreeParsedStrings(messages, messagesCount);
+    FreeParsedStrings(fields, numberOfFields);
+
+    return serverResponseStructure;
+}
+
+ServerResponse ProcessGetUsersCountRequest(const int clientId, ClientRequest clientRequest)
+{
+    struct ServerResponse serverResponseStructure;
+
+    char *currentUser = strdup(clientRequest.content);
+
+    int userExists = GetUsersCountByUsername(DB, currentUser);
+    if (userExists != 1)
+    {
+        serverResponseStructure.status = 400;
+        serverResponseStructure.content = "Username doesn't exists!";
+        LogEvent(clientId, "Get_Users_Count - Database - GetUsersCountByUsername - Count != 1");
+
+        return serverResponseStructure;
+    }
+
+    int usersCount = GetUsersCount(DB);
+    if (usersCount <= 0)
+    {
+        LogEvent(clientId, "Get_Users_Count - Database - GetUsersCount - Unsuccesful");
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error";
+    }
+    else
+    {
+        LogEvent(clientId, "Get_Users_Count - Database - GetUsersCount - Succesful");
+        int len = snprintf(NULL, 0, "%d", usersCount);
+        if (len <= 0)
+        {
+            LogEvent(clientId, "Get_Users_Count - Create Response Error");
+            serverResponseStructure.status = 500;
+            serverResponseStructure.content = "Server Internal Error";
+
+            return serverResponseStructure;
+        }
+
+        char *content = (char *)malloc(len + 1);
+        snprintf(content, len + 1, "%d", usersCount);
+
+        serverResponseStructure.status = 200;
+        serverResponseStructure.content = strdup(content);
+
+        free(content);
+    }
+
+    return serverResponseStructure;
+}
+
+ServerResponse ProcessGetMessagesCountRequest(const int clientId, ClientRequest clientRequest)
+{
+    struct ServerResponse serverResponseStructure;
+
+    int numberOfFields = 0;
+    char **fields = ParseContent(clientRequest.content, &numberOfFields);
+    if (numberOfFields != 2)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error";
+        LogEvent(clientId, "Get_Messages_Count - ParseContent - Count != 2");
+
+        return serverResponseStructure;
+    }
+
+    int userExists = GetUsersCountByUsername(DB, fields[1]);
+    if (userExists != 1)
+    {
+        serverResponseStructure.status = 400;
+        serverResponseStructure.content = "Username doesn't exists!";
+        LogEvent(clientId, "Get_Messages_Count - Database - GetUsersCountByUsername - Count != 1");
+
+        return serverResponseStructure;
+    }
+
+    int messagesCount = GetMessagesCountBetweenUsers(DB, fields[0], fields[1]);
+    if (messagesCount < 0)
+    {
+        LogEvent(clientId, "Get_Messages_Count - Database - GetMessagesCountBetweenUsers - Unsuccesful");
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error";
+    }
+    else
+    {
+        LogEvent(clientId, "Get_Messages_Count - Database - GetMessagesCountBetweenUsers - Succesful");
+        int len = snprintf(NULL, 0, "%d", messagesCount);
+        if (len <= 0)
+        {
+            LogEvent(clientId, "Get_Messages_Count - Create Response Error");
+            serverResponseStructure.status = 500;
+            serverResponseStructure.content = "Server Internal Error";
+
+            return serverResponseStructure;
+        }
+
+        char *content = (char *)malloc(len + 1);
+        snprintf(content, len + 1, "%d", messagesCount);
+
+        serverResponseStructure.status = 200;
+        serverResponseStructure.content = strdup(content);
+
+        free(content);
+    }
+
+    FreeParsedStrings(fields, numberOfFields);
+    return serverResponseStructure;
+}
+
+ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest clientRequest){
+    struct ServerResponse serverResponseStructure;
+
+    int numberOfFields = 0;
+    char **fields = ParseContent(clientRequest.content, &numberOfFields);
+    if (numberOfFields != 3)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Server Internal Error";
+        LogEvent(clientId, "Insert_Message - ParseContent - Count != 3");
+
+        return serverResponseStructure;
+    }
+
+    int userExists = GetUsersCountByUsername(DB, fields[1]);
+    if (userExists != 1)
+    {
+        serverResponseStructure.status = 400;
+        serverResponseStructure.content = "Username doesn't exists!";
+        LogEvent(clientId, "Insert_Message - Database - GetUsersCountByUsername - Count != 1");
+
+        return serverResponseStructure;
+    }
+
+    int insertResult = InsertMessage(DB, fields[0], fields[1], fields[2]);
+    if (insertResult != 0)
+    {
+        serverResponseStructure.status = 500;
+        serverResponseStructure.content = "Internal Server Error!";
+        LogEvent(clientId, "Insert_Message - Database - Insert - Unsuccesful");
+    }
+    else
+    {
+        serverResponseStructure.status = 201;
+        serverResponseStructure.content = "";
+        LogEvent(clientId, "Insert_Message - Database - Insert - Succesful");
+    }
+
+    FreeParsedStrings(fields, numberOfFields);
+    return serverResponseStructure;
+}
+
+char *PrepareViewContent(const char **rows, int rowsCount)
 {
     int contentLength = 0;
-    for (int i = 0; i < usernamesCount; i++)
+    for (int i = 0; i < rowsCount; i++)
     {
-        int usernameLength = snprintf(NULL, 0, "%s#", usernames[i]);
-        if (usernameLength <= 0)
+        int rowLength = snprintf(NULL, 0, "%s#", rows[i]);
+        if (rowLength <= 0)
         {
             return NULL;
         }
-        contentLength += usernameLength;
+        contentLength += rowLength;
     }
 
     char *content = (char *)malloc(contentLength + 1);
@@ -430,9 +658,9 @@ char *PrepareViewUsersContent(const char **usernames, int usernamesCount)
     }
 
     int offset = 0;
-    for (int i = 0; i < usernamesCount; i++)
+    for (int i = 0; i < rowsCount; i++)
     {
-        offset += snprintf((content + offset), contentLength - offset + 1, "%s#", usernames[i]);
+        offset += snprintf((content + offset), contentLength - offset + 1, "%s#", rows[i]);
         if (offset <= 0)
         {
             return NULL;

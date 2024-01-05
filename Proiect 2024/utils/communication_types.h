@@ -14,4 +14,11 @@ typedef struct ServerResponse
     char *content;
 } ServerResponse;
 
+typedef struct MessageStructure
+{
+    int id;
+    char *sender;
+    char *message;
+} MessageStructure;
+
 #endif

@@ -4,7 +4,7 @@
 
 #include "communication_types.h"
 
-const char *commands[] = {"Login", "Register", "Quit", "Select_User", "View_Users", "Get_Users_Count"};
+const char *commands[] = {"Login", "Register", "Quit", "View_Messages", "View_Users", "Get_Users_Count", "Get_Messages_Count", "Insert_Message"};
 
 int RetrieveCommandNumber(const char *command)
 {
@@ -122,6 +122,47 @@ ServerResponse ParseServerResponse(const char *response)
     }
 
     return responseStructure;
+}
+
+MessageStructure ParseMessage(const char *message)
+{
+    struct MessageStructure messageStructure;
+    messageStructure.id = -1;
+    messageStructure.sender = NULL;
+    messageStructure.message = NULL;
+
+    if (message == NULL)
+    {
+        return messageStructure;
+    }
+
+    char *token = strtok((char *)message, "|");
+    if (token != NULL)
+    {
+        messageStructure.id = atoi(token);
+
+        token = strtok(NULL, "|");
+        if (token != NULL)
+        {
+            messageStructure.sender = strdup(token);
+            token = strtok(NULL, "|");
+            if (token != NULL)
+            {
+                messageStructure.message = strdup(token);
+            }
+            else
+            {
+                messageStructure.id = -1;
+                messageStructure.sender = NULL;
+            }
+        }
+        else
+        {
+            messageStructure.id = -1;
+        }
+    }
+
+    return messageStructure;
 }
 
 void FreeParsedStrings(char **strings, int numStrings)
