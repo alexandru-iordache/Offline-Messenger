@@ -189,18 +189,13 @@ char RenderLoginView()
 
     wattron(window, COLOR_PAIR(2));
     mvwaddstr(window, Y_PRINT, X_PRINT, "Press any button to continue or \'q\' to quit.");
-    if (serverResponse.status == 0)
-    {
-        mvwaddstr(window, Y_PRINT + 1, X_PRINT, "Client Internal Error");
-    }
-    else
-    {
-        mvwaddstr(window, Y_PRINT + 1, X_PRINT, serverResponse.content);
-    }
+    mvwaddstr(window, Y_PRINT + 1, X_PRINT, serverResponse.content);
     wattroff(window, COLOR_PAIR(2));
 
-    memset(userInputs, 0, sizeof(userInputs));
-    free(serverResponse.content);
+    for (int i = 0; i < 2; i++)
+    {
+        memset(userInputs, 0, strlen(userInputs[i]));
+    }
 
     char ch = wgetch(window);
     return ch;
@@ -248,22 +243,13 @@ char RenderRegisterView()
 
     wattron(window, COLOR_PAIR(2));
     mvwaddstr(window, Y_PRINT, X_PRINT, "Press any button to continue or \'q\' to quit.");
-    if (serverResponse.status == 0)
-    {
-        mvwaddstr(window, Y_PRINT + 1, X_PRINT, "Client Internal Error");
-    }
-    else
-    {
-        mvwaddstr(window, Y_PRINT + 1, X_PRINT, serverResponse.content);
-    }
+    mvwaddstr(window, Y_PRINT + 1, X_PRINT, serverResponse.content);
     wattroff(window, COLOR_PAIR(2));
 
     for (int i = 0; i < 5; i++)
     {
-        memset(userInputs[i], 0, sizeof(userInputs[i]));
+        memset(userInputs[i], 0, strlen(userInputs[i]));
     }
-
-    free(serverResponse.content);
 
     char ch = wgetch(window);
     return ch;
@@ -776,7 +762,7 @@ ServerResponse SendLoginRequest(char userInputs[][50])
     if (validationCode != 0)
     {
         struct ServerResponse errorResponse;
-        errorResponse.status = 400;
+        errorResponse.status = 0;
 
         switch (validationCode)
         {
@@ -784,7 +770,7 @@ ServerResponse SendLoginRequest(char userInputs[][50])
             errorResponse.content = "The inputs should not be empty.";
             break;
         case 2:
-            errorResponse.content = "The inputs should not contain \":\" or \"#\" characters.";
+            errorResponse.content = "The inputs should not contain \":\", \"|\" or \"#\".";
             break;
         }
 
@@ -817,7 +803,7 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
     if (validationCode != 0)
     {
         struct ServerResponse errorResponse;
-        errorResponse.status = 400;
+        errorResponse.status = 0;
 
         switch (validationCode)
         {
@@ -825,7 +811,7 @@ ServerResponse SendRegisterRequest(char userInputs[][50])
             errorResponse.content = "The inputs should not be empty.";
             break;
         case 2:
-            errorResponse.content = "The inputs should not contain \":\" or \"#\" characters.";
+            errorResponse.content = "The inputs should not contain \":\", \"|\" or \"#\".";
             break;
         case 3:
             errorResponse.content = "The password should have at least 6 characters.";
