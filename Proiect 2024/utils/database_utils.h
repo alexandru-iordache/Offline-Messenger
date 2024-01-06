@@ -9,6 +9,8 @@ int OpenDatabase(sqlite3 **db, const char *databaseName);
 int InsertUser(sqlite3 *db, const char *username, const char *firstName, const char *lastName, const char *password);
 int InsertMessage(sqlite3 *db, const char *loggedUsername, const char  *selectedUser, const char *message);
 
+int UpdateMessage(sqlite3 *db, const int messageId);
+
 int GetUsersCount(sqlite3 *db);
 int GetUsersCountByUsername(sqlite3 *db, const char *username);
 int GetUsersCountByUsernameAndPassword(sqlite3 *db, const char *username, const char *password);

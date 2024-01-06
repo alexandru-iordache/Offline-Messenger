@@ -9,6 +9,7 @@ char *CreateServerResponse(int status, const char *content);
 ClientRequest ParseClientRequest(const char *request);
 ServerResponse ParseServerResponse(const char *response);
 char **ParseContent(const char *content, int *numberOfInputs);
+MessageStructure ParseMessage(const char *message);
 void FreeParsedStrings(char **strings, int numStrings);
 
 #endif

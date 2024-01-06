@@ -4,7 +4,7 @@
 
 #include "communication_types.h"
 
-const char *commands[] = {"Login", "Register", "Quit", "View_Messages", "View_Users", "Get_Users_Count", "Get_Messages_Count", "Insert_Message"};
+const char *commands[] = {"Login", "Register", "Quit", "View_Messages", "View_Users", "Get_Users_Count", "Get_Messages_Count", "Insert_Message", "Update_Message_Read"};
 
 int RetrieveCommandNumber(const char *command)
 {
@@ -130,6 +130,7 @@ MessageStructure ParseMessage(const char *message)
     messageStructure.id = -1;
     messageStructure.sender = NULL;
     messageStructure.message = NULL;
+    messageStructure.read = -1;
 
     if (message == NULL)
     {
@@ -149,6 +150,17 @@ MessageStructure ParseMessage(const char *message)
             if (token != NULL)
             {
                 messageStructure.message = strdup(token);
+                token = strtok(NULL, "|");
+                if (token != NULL)
+                {
+                    messageStructure.read = atoi(token);
+                }
+                else
+                {
+                    messageStructure.id = -1;
+                    messageStructure.sender = NULL;
+                    messageStructure.message = NULL;
+                }
             }
             else
             {

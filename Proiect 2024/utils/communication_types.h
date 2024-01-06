@@ -19,6 +19,7 @@ typedef struct MessageStructure
     int id;
     char *sender;
     char *message;
+    int read;
 } MessageStructure;
 
 #endif

@@ -42,6 +42,7 @@ ServerResponse ProccesViewMessagesRequest(const int clientId, ClientRequest clie
 ServerResponse ProcessGetUsersCountRequest(const int clientId, ClientRequest clientRequest);
 ServerResponse ProcessGetMessagesCountRequest(const int clientId, ClientRequest clientRequest);
 ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest clientRequest);
+ServerResponse ProccesUpdateMessageReadRequest(const int clientId, ClientRequest clientRequest);
 
 char *PrepareViewContent(const char **rows, int rowsCount);
 
@@ -165,7 +166,14 @@ static void *treat(void *arg)
             if (noOfBytesRead == -1)
             {
                 printf("[SERVER][ERROR][Client %d] Error at recv().\n", tdL->threadID);
+                fflush(stdout);
                 serverResponse = CreateServerResponse(500, "Error at recv().");
+                break;
+            }
+            else if (noOfBytesRead == 0)
+            {
+                LogEvent(tdL->threadID, "Client disconnected");
+                quit = 1;
                 break;
             }
             clientRequest[noOfBytesRead] = '\0';
@@ -178,13 +186,17 @@ static void *treat(void *arg)
             break;
         }
 
-        if (send(tdL->threadClient, serverResponse, strlen(serverResponse), 0) <= 0)
+        if (quit != 1)
         {
-            printf("[SERVER][ERROR][Client %d] Error at recv().\n", tdL->threadID);
-        }
+            if (send(tdL->threadClient, serverResponse, strlen(serverResponse), 0) <= 0)
+            {
+                printf("[SERVER][ERROR][Client %d] Error at recv().\n", tdL->threadID);
+            }
 
+            free(serverResponse);
+        } 
+        
         memset(clientRequest, 0, strlen(clientRequest));
-        free(serverResponse);
     }
 
     close(tdL->threadClient);
@@ -245,6 +257,9 @@ char *ProcessClientRequest(const int clientId, ClientRequest requestStructure)
             break;
         case 7:
             responseStructure = ProcessInsertMessageRequest(clientId, requestStructure);
+            break;
+        case 8:
+            responseStructure = ProccesUpdateMessageReadRequest(clientId, requestStructure);
             break;
         default:
             break;
@@ -596,7 +611,8 @@ ServerResponse ProcessGetMessagesCountRequest(const int clientId, ClientRequest 
     return serverResponseStructure;
 }
 
-ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest clientRequest){
+ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest clientRequest)
+{
     struct ServerResponse serverResponseStructure;
 
     int numberOfFields = 0;
@@ -630,11 +646,36 @@ ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest cli
     else
     {
         serverResponseStructure.status = 201;
-        serverResponseStructure.content = "";
+        serverResponseStructure.content = "Created";
         LogEvent(clientId, "Insert_Message - Database - Insert - Succesful");
     }
 
     FreeParsedStrings(fields, numberOfFields);
+    return serverResponseStructure;
+}
+
+ServerResponse ProccesUpdateMessageReadRequest(const int clientId, ClientRequest clientRequest)
+{
+    struct ServerResponse serverResponseStructure;
+
+    int numberOfFields = 0;
+    char **fields = ParseContent(clientRequest.content, &numberOfFields);
+
+    for (int i = 0; i < numberOfFields; i++)
+    {
+        int updateResult = UpdateMessage(DB, atoi(fields[i]));
+        if (updateResult != 0)
+        {
+            LogEvent(clientId, "Update_Message_Read - Database - Update - Unsuccesful");
+        }
+    }
+
+    LogEvent(clientId, "Update_Message_Read - Database - Update - Finished");
+
+    serverResponseStructure.status = 200;
+    serverResponseStructure.content = "Updated";
+    LogEvent(clientId, "Update_Message_Read - Update - Succesful");
+
     return serverResponseStructure;
 }
 

@@ -241,8 +241,9 @@ int GetMessagesBetweenUsers(sqlite3 *db, char **messages, const char *loggedUser
         int id = sqlite3_column_int(stmt, 0);
         char *sender = (char *)sqlite3_column_text(stmt, 1);
         char *message = (char *)sqlite3_column_text(stmt, 3);
+        int read = sqlite3_column_int(stmt, 4);
 
-        int len = snprintf(NULL, 0, "%d|%s|%s", id, sender, message);
+        int len = snprintf(NULL, 0, "%d|%s|%s|%d", id, sender, message, read);
         if (len < 0)
         {
             printf("[Error][Database] GET messages parsing error: %s\n", err);
@@ -251,9 +252,9 @@ int GetMessagesBetweenUsers(sqlite3 *db, char **messages, const char *loggedUser
         }
 
         messages[i] = (char *)malloc(len + 1);
-        snprintf(messages[i], len + 1, "%d|%s|%s", id, sender, message);
+        snprintf(messages[i], len + 1, "%d|%s|%s|%d", id, sender, message, read);
         messages[i][strlen(messages[i])] = '\0';
-        
+
         rc = sqlite3_step(stmt);
         i++;
     }
@@ -294,8 +295,9 @@ int InsertUser(sqlite3 *db, const char *username, const char *firstName, const c
     return 0;
 }
 
-int InsertMessage(sqlite3 *db, const char *loggedUsername, const char  *selectedUser, const char *message){
-     char *err;
+int InsertMessage(sqlite3 *db, const char *loggedUsername, const char *selectedUser, const char *message)
+{
+    char *err;
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
 
@@ -306,6 +308,28 @@ int InsertMessage(sqlite3 *db, const char *loggedUsername, const char  *selected
     if (rc != SQLITE_OK)
     {
         printf("[Error][Database] Message insert query exec error: %s\n", err);
+        fflush(stdout);
+
+        sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, NULL);
+        return -1;
+    }
+
+    sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, NULL);
+    return 0;
+}
+
+int UpdateMessage(sqlite3 *db, const int messageId)
+{
+    char *err;
+
+    sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
+
+    char *query = sqlite3_mprintf("UPDATE messages SET read = 1 WHERE id = %d;", messageId);
+
+    int rc = sqlite3_exec(db, query, NULL, NULL, &err);
+    if (rc != SQLITE_OK)
+    {
+        printf("[Error][Database] Message update query exec error: %s\n", err);
         fflush(stdout);
 
         sqlite3_exec(db, "END TRANSACTION;", NULL, NULL, NULL);
