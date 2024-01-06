@@ -280,12 +280,11 @@ int RenderSecondPage()
 
     wattron(window, COLOR_PAIR(1));
     mvwprintw(window, Y_PRINT + 4, X_PRINT, "[1] View Users");
-    mvwprintw(window, Y_PRINT + 6, X_PRINT, "[2] View Unread Messages");
     wattroff(window, COLOR_PAIR(1));
 
     wattron(window, COLOR_PAIR(2));
-    mvwprintw(window, Y_PRINT + 8, X_PRINT, "[L] Logout");
-    mvwprintw(window, Y_PRINT + 10, X_PRINT, "[Q] Quit");
+    mvwprintw(window, Y_PRINT + 6, X_PRINT, "[L] Logout");
+    mvwprintw(window, Y_PRINT + 8, X_PRINT, "[Q] Quit");
     wattroff(window, COLOR_PAIR(2));
 
     char ch = wgetch(window);
@@ -355,6 +354,10 @@ char RenderViewUsersView()
             mvwprintw(window, Y_PRINT + 25, X_PRINT + 30, "[B] Back");
             wattroff(window, COLOR_PAIR(2));
 
+            wattron(window, COLOR_PAIR(1));
+            mvwprintw(window, Y_PRINT + 25, X_PRINT + 15, "[R] Refresh");
+            wattroff(window, COLOR_PAIR(1));
+
             // Print back button only if current page is not the first one
             if (currentPage > 1)
             {
@@ -387,10 +390,15 @@ char RenderViewUsersView()
             char **users = ParseContent(viewUsersServerResponse.content, &numOfUsers);
 
             free(viewUsersServerResponse.content);
+
             int user_Y_PRINT = Y_PRINT + 4;
+            struct UserViewStructure userObjects[numOfUsers];
             for (int i = 0; i < numOfUsers; i++)
             {
-                int len = snprintf(NULL, 0, "[%d] %s", i, users[i]);
+                userObjects[i] = ParseUserViewStructure(users[i]);
+
+                int len = snprintf(NULL, 0, "[%d] %s [%d Unread Messages]", i,
+                                   userObjects[i].username, userObjects[i].unreadMessagesCount);
                 if (len <= 0)
                 {
                     wattron(window, COLOR_PAIR(2));
@@ -402,7 +410,8 @@ char RenderViewUsersView()
                 }
 
                 char *userRow = (char *)malloc(len + 1);
-                snprintf(userRow, len + 1, "[%d] %s", i, users[i]);
+                snprintf(userRow, len + 1, "[%d] %s [%d Unread Messages]", i,
+                         userObjects[i].username, userObjects[i].unreadMessagesCount);
 
                 wattron(window, COLOR_PAIR(1));
                 mvwprintw(window, user_Y_PRINT, X_PRINT, userRow);
@@ -420,7 +429,7 @@ char RenderViewUsersView()
                     int digit = ch - '0';
                     if (digit >= 0 && digit < numOfUsers)
                     {
-                        RenderSelectUserView(users[digit]);
+                        RenderSelectUserView(userObjects[digit].username);
                         break;
                     }
 
@@ -436,6 +445,11 @@ char RenderViewUsersView()
                         break;
                     }
 
+                    if ((ch == 'R') || ch == 'r')
+                    {
+                        break;
+                    }
+
                     if (ch == 'B' || ch == 'b')
                     {
                         break;
@@ -447,7 +461,7 @@ char RenderViewUsersView()
 
             ClearRows(Y_PRINT + 4, Y_PRINT + 25);
             FreeParsedStrings(users, numOfUsers);
-        } while (ch != 'B' && ch != 'b');
+        } while (ch != 'B' && ch != 'b' && ch != 'R' && ch != 'r');
     }
     else
     {
@@ -455,11 +469,20 @@ char RenderViewUsersView()
         mvwprintw(window, Y_PRINT + 25, X_PRINT + 30, "[B] Back");
         wattroff(window, COLOR_PAIR(2));
 
-        // When no page exists, wait for back command
-        while (ch != 'B' && ch != 'b')
+        wattron(window, COLOR_PAIR(1));
+        mvwprintw(window, Y_PRINT + 25, X_PRINT + 15, "[R] Refresh");
+        wattroff(window, COLOR_PAIR(1));
+
+        // When no page exists, wait for back command or refresh
+        while (ch != 'B' && ch != 'b' && ch != 'R' && ch != 'r')
         {
             ch = wgetch(window);
         }
+    }
+
+    if (ch == 'R' || ch == 'r')
+    {
+        RenderViewUsersView();
     }
 
     return 0;
@@ -501,18 +524,15 @@ char RenderSelectUserView(const char *selectedUser)
         mvwprintw(window, Y_PRINT + 23, X_PRINT + 30, "[B] Back");
         wattroff(window, COLOR_PAIR(2));
 
+        wattron(window, COLOR_PAIR(1));
+        mvwprintw(window, Y_PRINT + 25, X_PRINT + 15, "[R] Refresh");
+        wattroff(window, COLOR_PAIR(1));
+
         // Print back button only if current page is not the first one
         if (currentPage > 1)
         {
             wattron(window, COLOR_PAIR(1));
             mvwprintw(window, Y_PRINT + 25, X_PRINT, "[Z] Previous");
-            wattroff(window, COLOR_PAIR(1));
-        }
-
-        if (messagesCount > 0)
-        {
-            wattron(window, COLOR_PAIR(1));
-            mvwprintw(window, Y_PRINT + 25, X_PRINT + 15, "[R] Refresh");
             wattroff(window, COLOR_PAIR(1));
         }
 

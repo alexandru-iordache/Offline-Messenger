@@ -272,6 +272,39 @@ int GetMessagesBetweenUsers(sqlite3 *db, char **messages, const char *loggedUser
     return i;
 }
 
+int GetUnreadMessagesCountBetweenUsers(sqlite3 *db, const char *loggedUsername, const char *selectedUsername)
+{
+    sqlite3_stmt *stmt;
+    char *err;
+
+    int rc = sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM messages WHERE (receiver = ? AND sender = ?) AND read = 0", -1, &stmt, NULL);
+    if (rc != SQLITE_OK)
+    {
+        printf("[Error][Database] GET Unread Messages count between users query prepare error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+
+    rc = sqlite3_bind_text(stmt, 1, loggedUsername, -1, SQLITE_STATIC);
+    rc = sqlite3_bind_text(stmt, 2, selectedUsername, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW)
+    {
+        printf("[Error][Database] GET Unread Messages count between users query execute error: %s\n", err);
+        fflush(stdout);
+        return -1;
+    }
+
+    int messagesCount = sqlite3_column_int(stmt, 0);
+
+    sqlite3_clear_bindings(stmt);
+    sqlite3_reset(stmt);
+    sqlite3_finalize(stmt);
+
+    return messagesCount;
+}
+
 int InsertUser(sqlite3 *db, const char *username, const char *firstName, const char *lastName, const char *password)
 {
     char *err;

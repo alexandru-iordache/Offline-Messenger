@@ -17,5 +17,6 @@ int GetUsersCountByUsernameAndPassword(sqlite3 *db, const char *username, const 
 int GetUsernamesWhereNotEqualUsername(sqlite3 *db, char **usernames, const char *username, const int page);
 
 int GetMessagesCountBetweenUsers(sqlite3 *db, const char *loggedUsername, const char *selectedUsername);
+int GetUnreadMessagesCountBetweenUsers(sqlite3 *db, const char *loggedUsername, const char *selectedUsername);
 int GetMessagesBetweenUsers(sqlite3 *db, char **messages, const char *loggedUsername, const char *selectedUsername, const int page);
 #endif

@@ -177,6 +177,36 @@ MessageStructure ParseMessage(const char *message)
     return messageStructure;
 }
 
+UserViewStructure ParseUserViewStructure(const char *row)
+{
+    struct UserViewStructure userViewStructure;
+    userViewStructure.username = NULL;
+    userViewStructure.unreadMessagesCount = 0;
+
+    if (row == NULL)
+    {
+        return userViewStructure;
+    }
+
+    char *token = strtok((char *)row, "|");
+    if (token != NULL)
+    {
+        userViewStructure.username = strdup(token);
+
+        token = strtok(NULL, "|");
+        if (token != NULL)
+        {
+            userViewStructure.unreadMessagesCount = atoi(token);
+        }
+        else
+        {
+            userViewStructure.username = NULL;
+        }
+    }
+
+    return userViewStructure;
+}
+
 void FreeParsedStrings(char **strings, int numStrings)
 {
     for (int i = 0; i < numStrings; i++)

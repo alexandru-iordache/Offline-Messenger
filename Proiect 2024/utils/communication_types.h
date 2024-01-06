@@ -22,4 +22,10 @@ typedef struct MessageStructure
     int read;
 } MessageStructure;
 
+typedef struct UserViewStructure
+{
+    char *username;
+    int unreadMessagesCount;
+} UserViewStructure;
+
 #endif

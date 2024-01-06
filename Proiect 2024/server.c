@@ -44,6 +44,7 @@ ServerResponse ProcessGetMessagesCountRequest(const int clientId, ClientRequest 
 ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest clientRequest);
 ServerResponse ProccesUpdateMessageReadRequest(const int clientId, ClientRequest clientRequest);
 
+char *PrepareUsersViewContent(const char **rows, const int *counts, int rowsCount);
 char *PrepareViewContent(const char **rows, int rowsCount);
 
 int FileExists(const char *filename);
@@ -194,8 +195,8 @@ static void *treat(void *arg)
             }
 
             free(serverResponse);
-        } 
-        
+        }
+
         memset(clientRequest, 0, strlen(clientRequest));
     }
 
@@ -425,7 +426,23 @@ ServerResponse ProcessViewUsersRequest(const int clientId, ClientRequest clientR
     }
     LogEvent(clientId, "View_Users - Database - GetUsernames - Succesful");
 
-    char *content = PrepareViewContent(usernames, usernamesCount);
+    int unreadMessagesCounts[usernamesCount];
+    for (int i = 0; i < usernamesCount; i++)
+    {
+        int count = GetUnreadMessagesCountBetweenUsers(DB, fields[0], usernames[i]);
+        if (count < 0)
+        {
+            serverResponseStructure.status = 500;
+            serverResponseStructure.content = "Internal Server Error!";
+            LogEvent(clientId, "View_Users - Database - GetUnreadMessagesCount - Unsuccesful");
+
+            return serverResponseStructure;
+        }
+
+        unreadMessagesCounts[i] = count;
+    }
+
+    char *content = PrepareUsersViewContent(usernames, &unreadMessagesCounts, usernamesCount);
     if (content == NULL)
     {
         serverResponseStructure.status = 500;
@@ -677,6 +694,27 @@ ServerResponse ProccesUpdateMessageReadRequest(const int clientId, ClientRequest
     LogEvent(clientId, "Update_Message_Read - Update - Succesful");
 
     return serverResponseStructure;
+}
+
+char *PrepareUsersViewContent(const char **rows, const int *counts, int rowsCount)
+{
+    char **rowsWithCounts = (char **)malloc(rowsCount * sizeof(char *));
+    for (int i = 0; i < rowsCount; i++)
+    {
+        int len = snprintf(NULL, 0, "%s|%d|", rows[i], counts[i]);
+        if (len < 0)
+        {
+            return NULL;
+        }
+
+        rowsWithCounts[i] = (char **)malloc(len + 1);
+        snprintf(rowsWithCounts[i], len + 1, "%s|%d|", rows[i], counts[i]);
+    }
+
+    char *content = PrepareViewContent(rowsWithCounts, rowsCount);
+
+    free(rowsWithCounts);
+    return content;
 }
 
 char *PrepareViewContent(const char **rows, int rowsCount)
