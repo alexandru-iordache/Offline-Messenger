@@ -30,6 +30,8 @@ WINDOW *window;
 char *loggedUsername = NULL;
 unsigned short int authorized = 0;
 
+int Y_MAX, X_MAX;
+
 // UI functions
 int RenderFirstPage();
 char RenderLoginView();
@@ -39,9 +41,11 @@ int RenderSecondPage();
 char RenderViewUsersView();
 char RenderSelectUserView(const char *selectedUser);
 
-int RenderSendMessageComponent(const char *selectedUser, const int Y_PRINT);
+int RenderSendMessageComponent(const char *selectedUser, const int replyId, const int Y_PRINT);
+int RenderViewMessageView(const struct MessageStructure messageObject, const char *selectedUser);
 
 // Helper Functions
+char *CreatePrintRow(struct MessageStructure messageObject, int i);
 void ClearRows(int startRow, int endRow);
 
 // Communication functions
@@ -53,7 +57,7 @@ ServerResponse SendViewUsersRequest(int currentPage);
 ServerResponse SendViewMessagesRequest(int currentPage, const char *selectedUser);
 ServerResponse SendGetUsersCountRequest();
 ServerResponse SendGetMessagesCountRequest(const char *selectedUser);
-ServerResponse SendInsertMessageRequest(const char *selectedUser, const char *message);
+ServerResponse SendInsertMessageRequest(const char *selectedUser, const char *message, int replyId);
 ServerResponse SendUpdateMessageReadRequest(struct MessageStructure *messageObjects, int numOfMessages);
 
 int main()
@@ -85,10 +89,9 @@ int main()
     scrollok(window, TRUE); // Enable scrolling
     curs_set(0);            // Hide cursor
 
-    int yMax, xMax;
-    getmaxyx(stdscr, yMax, xMax);
+    getmaxyx(stdscr, Y_MAX, X_MAX);
 
-    window = newwin(yMax / 2, xMax / 2, yMax / 4, xMax / 4);
+    window = newwin(Y_MAX / 2, X_MAX / 2, Y_MAX / 4, X_MAX / 4);
 
     // Set up colors if supported
     if (has_colors())
@@ -171,11 +174,11 @@ char RenderLoginView()
 
     echo();
     mvwprintw(window, Y_PRINT + 3, X_PRINT, "Enter Username: ");
-    wgetstr(window, userInputs[0]);
+    wgetnstr(window, userInputs[0], 49);
     noecho();
 
     mvwprintw(window, Y_PRINT + 4, X_PRINT, "Enter Password: ");
-    wgetstr(window, userInputs[1]);
+    wgetnstr(window, userInputs[1], 49);
 
     wattroff(window, COLOR_PAIR(1));
 
@@ -215,21 +218,21 @@ char RenderRegisterView()
     echo();
 
     mvwprintw(window, Y_PRINT + 3, X_PRINT, "Enter Username: ");
-    wgetstr(window, userInputs[0]);
+    wgetnstr(window, userInputs[0], 49);
 
     mvwprintw(window, Y_PRINT + 4, X_PRINT, "Enter First Name: ");
-    wgetstr(window, userInputs[1]);
+    wgetnstr(window, userInputs[1], 49);
 
     mvwprintw(window, Y_PRINT + 5, X_PRINT, "Enter Last Name: ");
-    wgetstr(window, userInputs[2]);
+    wgetnstr(window, userInputs[2], 49);
 
     noecho();
 
     mvwprintw(window, Y_PRINT + 6, X_PRINT, "Enter Password: ");
-    wgetstr(window, userInputs[3]);
+    wgetnstr(window, userInputs[3], 49);
 
     mvwprintw(window, Y_PRINT + 7, X_PRINT, "Confirm Password: ");
-    wgetstr(window, userInputs[4]);
+    wgetnstr(window, userInputs[4], 49);
 
     wattroff(window, COLOR_PAIR(1));
 
@@ -532,8 +535,13 @@ char RenderSelectUserView(const char *selectedUser)
 
         int numOfMessages = 0;
         char **messages = NULL;
+        struct MessageStructure *messageObjects;
         if (messagesCount > 0)
         {
+            wattron(window, COLOR_PAIR(1));
+            mvwaddstr(window, Y_PRINT + 3, X_PRINT, "Press message digit to view entire message");
+            wattroff(window, COLOR_PAIR(1));
+
             ServerResponse getMessagesServerResponse = SendViewMessagesRequest(currentPage, selectedUser);
             if (getMessagesServerResponse.status != 200)
             {
@@ -549,15 +557,17 @@ char RenderSelectUserView(const char *selectedUser)
             messages = ParseContent(getMessagesServerResponse.content, &numOfMessages);
             free(getMessagesServerResponse.content);
 
-            struct MessageStructure messageObjects[numOfMessages];
+            messageObjects = (struct MessageStructure *)malloc(numOfMessages * sizeof(struct MessageStructure));
             int message_Y_PRINT = Y_PRINT + 5;
             for (int i = numOfMessages - 1; i >= 0; i--)
             {
                 messageObjects[i] = ParseMessage(messages[i]);
 
-                int len = snprintf(NULL, 0, "[%d] %s: %s", messageObjects[i].id,
+                int len = snprintf(NULL, 0, "[%d][ID: %d] %s: %s", i, messageObjects[i].id,
                                    messageObjects[i].sender, messageObjects[i].message);
-                if (len <= 0)
+
+                char *messageRow = CreatePrintRow(messageObjects[i], i);
+                if (messageRow == NULL)
                 {
                     wattron(window, COLOR_PAIR(2));
                     mvwprintw(window, message_Y_PRINT, X_PRINT, "Client Error");
@@ -567,13 +577,10 @@ char RenderSelectUserView(const char *selectedUser)
                     break;
                 }
 
-                char *messageRow = (char *)malloc(len + 1);
-                snprintf(messageRow, len + 1, "[%d] %s: %s", messageObjects[i].id,
-                         messageObjects[i].sender, messageObjects[i].message);
-
                 int messageColor = messageObjects[i].read == 0 && strcmp(messageObjects[i].sender, loggedUsername) != 0 ? 2 : 1;
                 wattron(window, COLOR_PAIR(messageColor));
-                mvwprintw(window, message_Y_PRINT, X_PRINT, messageRow);
+                wmove(window, message_Y_PRINT, X_PRINT);
+                waddnstr(window, messageRow, X_MAX / 2 - X_PRINT - 1);
                 wattroff(window, COLOR_PAIR(messageColor));
 
                 free(messageRow);
@@ -598,13 +605,25 @@ char RenderSelectUserView(const char *selectedUser)
         {
             if (isalnum(ch))
             {
+                int digit = ch - '0';
+                if (digit >= 0 && digit < numOfMessages)
+                {
+                    RenderViewMessageView(messageObjects[digit], selectedUser);
+
+                    ch = RenderSelectUserView(selectedUser);
+                    break;
+                }
+
                 if (ch == 'S' || ch == 's')
                 {
-                    int result = RenderSendMessageComponent(selectedUser, Y_PRINT);
+                    ClearRows(Y_PRINT + 23, Y_PRINT + 25);
+
+                    int result = RenderSendMessageComponent(selectedUser, -1, Y_PRINT);
                     if (result != 0)
                     {
                         break;
                     }
+
                     ch = RenderSelectUserView(selectedUser);
                     break;
                 }
@@ -636,51 +655,118 @@ char RenderSelectUserView(const char *selectedUser)
             ch = wgetch(window);
         }
 
-        ClearRows(Y_PRINT + 5, Y_PRINT + 25);
+        ClearRows(Y_PRINT + 3, Y_PRINT + 25);
         FreeParsedStrings(messages, numOfMessages);
+        free(messageObjects);
     } while (ch != 'B' && ch != 'b');
 
     return ch;
 }
 
-int RenderSendMessageComponent(const char *selectedUser, const int Y_PRINT)
+int RenderViewMessageView(const struct MessageStructure messageObject, const char *selectedUser)
+{
+    wclear(window);
+    box(window, 0, 0);
+
+    const int Y_PRINT = 2;
+
+    mvwprintw(window, Y_PRINT, X_PRINT + 12, "Message View");
+
+    wattron(window, COLOR_PAIR(2));
+    mvwprintw(window, Y_PRINT + 25, X_PRINT + 30, "[B] Back");
+    wattroff(window, COLOR_PAIR(2));
+
+    wattron(window, COLOR_PAIR(1));
+    mvwprintw(window, Y_PRINT + 25, X_PRINT + 15, "[R] Reply");
+    wattroff(window, COLOR_PAIR(1));
+
+    int len = snprintf(NULL, 0, "%s: %s", messageObject.sender, messageObject.message);
+    if (len <= 0)
+    {
+        wattron(window, COLOR_PAIR(2));
+        mvwprintw(window, Y_PRINT + 4, X_PRINT, "Client Error");
+        wattroff(window, COLOR_PAIR(2));
+
+        wgetch(window);
+        return -1;
+    }
+
+    char *messageRow = (char *)malloc(len + 1);
+    snprintf(messageRow, len + 1, "%s: %s", messageObject.sender, messageObject.message);
+
+    int currentY = Y_PRINT + 4;
+    int currentX = X_PRINT - 2;
+    wattron(window, COLOR_PAIR(1));
+    for (int i = 0; i < len + 1; i++)
+    {
+        if (currentX + 1 >= X_MAX / 2 - 1)
+        {
+            currentX = X_PRINT - 2;
+            currentY += 1;
+        }
+
+        mvwprintw(window, currentY, currentX, "%c", messageRow[i]);
+        currentX += 1;
+    }
+    wattroff(window, COLOR_PAIR(1));
+
+    free(messageRow);
+
+    char ch = wgetch(window);
+    while (1)
+    {
+        if (isalnum(ch))
+        {
+            if (ch == 'B' || ch == 'b')
+            {
+                return 0;
+            }
+
+            if (ch == 'R' || ch == 'r')
+            {
+                ClearRows(Y_PRINT + 23, Y_PRINT + 25);
+
+                int result = RenderSendMessageComponent(selectedUser, messageObject.id, Y_PRINT);
+                if (result != 0)
+                {
+                    break;
+                }
+
+                return 0;
+            }
+        }
+        ch = wgetch(window);
+    }
+}
+
+int RenderSendMessageComponent(const char *selectedUser, const int replyId, const int Y_PRINT)
 {
     wattron(window, COLOR_PAIR(1));
     mvwprintw(window, Y_PRINT + 21, X_PRINT, "Write Message: ");
     wattroff(window, COLOR_PAIR(1));
 
-    char message[1][100];
+    char *message = (char *)malloc(1000);
     echo();
-    wgetstr(window, message[0]);
+    wgetnstr(window, message, 999);
     noecho();
 
-    int validationResult = ValidateUserInputs("Insert_Message", 1, message);
-    if (validationResult != 0)
-    {
-        wattron(window, COLOR_PAIR(2));
-        mvwaddstr(window, Y_PRINT + 3, X_PRINT, "Press any button to return.");
-        mvwaddstr(window, Y_PRINT + 4, X_PRINT, "Validation Failed");
-        wattroff(window, COLOR_PAIR(2));
-
-        wgetch(window);
-        ClearRows(Y_PRINT + 3, Y_PRINT + 4);
-        return -1;
-    }
-
-    struct ServerResponse insertMessageServerResponse = SendInsertMessageRequest(selectedUser, message[0]);
+    struct ServerResponse insertMessageServerResponse = SendInsertMessageRequest(selectedUser, message, replyId);
     if (insertMessageServerResponse.status != 201)
     {
+        ClearRows(Y_PRINT + 3, Y_PRINT + 3);
+
         wattron(window, COLOR_PAIR(2));
         mvwaddstr(window, Y_PRINT + 3, X_PRINT, "Press any button to return.");
         mvwaddstr(window, Y_PRINT + 4, X_PRINT, insertMessageServerResponse.content);
         wattroff(window, COLOR_PAIR(2));
 
         wgetch(window);
+        free(message);
         ClearRows(Y_PRINT + 3, Y_PRINT + 4);
         return -1;
     }
 
-    memset(message[0], 0, sizeof(message[0]));
+    free(message);
 
     return 0;
 }
@@ -933,10 +1019,28 @@ ServerResponse SendGetUsersCountRequest()
     return SendRequest(clientRequest);
 }
 
-ServerResponse SendInsertMessageRequest(const char *selectedUser, const char *message)
+ServerResponse SendInsertMessageRequest(const char *selectedUser, const char *message, int replyId)
 {
+    if (message == NULL || strlen(message) == 0)
+    {
+        struct ServerResponse errorResponse;
+        errorResponse.status = 0;
+        errorResponse.content = "The inputs should not be empty.";
+
+        return errorResponse;
+    }
+
+    if (strchr(message, ':') != NULL || strchr(message, '#') != NULL || strchr(message, '|'))
+    {
+        struct ServerResponse errorResponse;
+        errorResponse.status = 0;
+        errorResponse.content = "The inputs should not contain \":\", \"|\" or \"#\".";
+
+        return errorResponse;
+    }
+
     char *content = NULL;
-    int len = snprintf(NULL, 0, "%s#%s#%s#", loggedUsername, selectedUser, message);
+    int len = snprintf(NULL, 0, "%s#%s#%s#%d#", loggedUsername, selectedUser, message, replyId);
 
     if (len <= 0)
     {
@@ -947,7 +1051,7 @@ ServerResponse SendInsertMessageRequest(const char *selectedUser, const char *me
     }
 
     content = (char *)malloc(len + 1);
-    snprintf(content, len + 1, "%s#%s#%s#", loggedUsername, selectedUser, message);
+    snprintf(content, len + 1, "%s#%s#%s#%d#", loggedUsername, selectedUser, message, replyId);
 
     char *clientRequest = CreateClientRequest("Insert_Message", content, authorized);
 
@@ -1014,6 +1118,39 @@ ServerResponse SendUpdateMessageReadRequest(struct MessageStructure *messageObje
 }
 
 // Helper Functions
+char *CreatePrintRow(struct MessageStructure messageObject, int i)
+{
+    int len;
+    if (messageObject.replyId != -1)
+    {
+        len = snprintf(NULL, 0, "[%d][R_TO: %d][ID: %d] %s: %s", i, messageObject.replyId, messageObject.id,
+                       messageObject.sender, messageObject.message);
+    }
+    else
+    {
+        len = snprintf(NULL, 0, "[%d][ID: %d] %s: %s", i, messageObject.id,
+                       messageObject.sender, messageObject.message);
+    }
+    if (len <= 0)
+    {
+        return NULL;
+    }
+
+    char *messageRow = (char *)malloc(len + 1);
+    if (messageObject.replyId != -1)
+    {
+        snprintf(messageRow, len + 1, "[%d][R_TO: %d][ID: %d] %s: %s", i, messageObject.replyId, messageObject.id,
+                 messageObject.sender, messageObject.message);
+    }
+    else
+    {
+        snprintf(messageRow, len + 1, "[%d][ID: %d] %s: %s", i, messageObject.id,
+                 messageObject.sender, messageObject.message);
+    }
+
+    return messageRow;
+}
+
 void ClearRows(int startRow, int endRow)
 {
     while (startRow <= endRow)

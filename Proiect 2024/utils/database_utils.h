@@ -7,7 +7,7 @@ int CreateDatabase(sqlite3 **db, const char *databaseName);
 int OpenDatabase(sqlite3 **db, const char *databaseName);
 
 int InsertUser(sqlite3 *db, const char *username, const char *firstName, const char *lastName, const char *password);
-int InsertMessage(sqlite3 *db, const char *loggedUsername, const char  *selectedUser, const char *message);
+int InsertMessage(sqlite3 *db, const char *loggedUsername, const char  *selectedUser, const char *message, int replyId);
 
 int UpdateMessage(sqlite3 *db, const int messageId);
 

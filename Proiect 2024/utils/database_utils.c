@@ -17,7 +17,7 @@ int CreateDatabase(sqlite3 **db, const char *databaseName)
         return -1;
     }
 
-    rc = sqlite3_exec(*db, "CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, sender VARCHAR(255), receiver VARCHAR(255), message VARCHAR(255), read INTEGER);", NULL, NULL, &err);
+    rc = sqlite3_exec(*db, "CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, sender VARCHAR(255), receiver VARCHAR(255), message VARCHAR(255), read INTEGER, replyId INTEGER);", NULL, NULL, &err);
     if (rc != SQLITE_OK)
     {
         printf("[Error][Database] CREATE TABLE <MESSAGES>: %s\n", err);
@@ -242,8 +242,9 @@ int GetMessagesBetweenUsers(sqlite3 *db, char **messages, const char *loggedUser
         char *sender = (char *)sqlite3_column_text(stmt, 1);
         char *message = (char *)sqlite3_column_text(stmt, 3);
         int read = sqlite3_column_int(stmt, 4);
+        int replyId = sqlite3_column_int(stmt, 5);
 
-        int len = snprintf(NULL, 0, "%d|%s|%s|%d", id, sender, message, read);
+        int len = snprintf(NULL, 0, "%d|%s|%s|%d|%d", id, sender, message, read, replyId);
         if (len < 0)
         {
             printf("[Error][Database] GET messages parsing error: %s\n", err);
@@ -252,7 +253,7 @@ int GetMessagesBetweenUsers(sqlite3 *db, char **messages, const char *loggedUser
         }
 
         messages[i] = (char *)malloc(len + 1);
-        snprintf(messages[i], len + 1, "%d|%s|%s|%d", id, sender, message, read);
+        snprintf(messages[i], len + 1, "%d|%s|%s|%d|%d", id, sender, message, read, replyId);
         messages[i][strlen(messages[i])] = '\0';
 
         rc = sqlite3_step(stmt);
@@ -328,13 +329,13 @@ int InsertUser(sqlite3 *db, const char *username, const char *firstName, const c
     return 0;
 }
 
-int InsertMessage(sqlite3 *db, const char *loggedUsername, const char *selectedUser, const char *message)
+int InsertMessage(sqlite3 *db, const char *loggedUsername, const char *selectedUser, const char *message, int replyId)
 {
     char *err;
 
     sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
 
-    char *query = sqlite3_mprintf("INSERT INTO messages(sender, receiver, message, read)  VALUES('%q','%q','%q', %d);", loggedUsername, selectedUser, message, 0);
+    char *query = sqlite3_mprintf("INSERT INTO messages(sender, receiver, message, read, replyId)  VALUES('%q','%q','%q', %d, %d);", loggedUsername, selectedUser, message, 0, replyId);
     printf("[Database] Query: %s\n", query);
 
     int rc = sqlite3_exec(db, query, NULL, NULL, &err);

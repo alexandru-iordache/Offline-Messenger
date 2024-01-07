@@ -634,7 +634,7 @@ ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest cli
 
     int numberOfFields = 0;
     char **fields = ParseContent(clientRequest.content, &numberOfFields);
-    if (numberOfFields != 3)
+    if (numberOfFields != 4)
     {
         serverResponseStructure.status = 500;
         serverResponseStructure.content = "Server Internal Error";
@@ -653,7 +653,7 @@ ServerResponse ProcessInsertMessageRequest(const int clientId, ClientRequest cli
         return serverResponseStructure;
     }
 
-    int insertResult = InsertMessage(DB, fields[0], fields[1], fields[2]);
+    int insertResult = InsertMessage(DB, fields[0], fields[1], fields[2], atoi(fields[3]));
     if (insertResult != 0)
     {
         serverResponseStructure.status = 500;

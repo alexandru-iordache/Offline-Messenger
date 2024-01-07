@@ -20,6 +20,7 @@ typedef struct MessageStructure
     char *sender;
     char *message;
     int read;
+    int replyId;
 } MessageStructure;
 
 typedef struct UserViewStructure

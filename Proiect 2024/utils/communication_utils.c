@@ -154,6 +154,18 @@ MessageStructure ParseMessage(const char *message)
                 if (token != NULL)
                 {
                     messageStructure.read = atoi(token);
+                    token = strtok(NULL, "|");
+                    if (token != NULL)
+                    {
+                        messageStructure.replyId = atoi(token);
+                    }
+                    else
+                    {
+                        messageStructure.id = -1;
+                        messageStructure.sender = NULL;
+                        messageStructure.message = NULL;
+                        messageStructure.read = -1;
+                    }
                 }
                 else
                 {
