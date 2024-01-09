@@ -91,9 +91,8 @@ int main()
 
     getmaxyx(stdscr, Y_MAX, X_MAX);
 
-    window = newwin(Y_MAX / 2, X_MAX / 2, Y_MAX / 4, X_MAX / 4);
+    window = newwin(Y_MAX / 1.5, X_MAX / 2, Y_MAX / 4, X_MAX / 4);
 
-    // Set up colors if supported
     if (has_colors())
     {
         start_color();
@@ -108,7 +107,7 @@ int main()
 
         if (signal == -1)
         {
-            continue;
+            break;
         }
 
         signal = RenderSecondPage();
@@ -282,12 +281,6 @@ int RenderSecondPage()
         if (ch == '1')
         {
             RenderViewUsersView();
-            break;
-        }
-
-        if (ch == '2')
-        {
-            // RenderUnreadMessagesView();
             break;
         }
 
@@ -535,7 +528,7 @@ char RenderSelectUserView(const char *selectedUser)
 
         int numOfMessages = 0;
         char **messages = NULL;
-        struct MessageStructure *messageObjects;
+        struct MessageStructure *messageObjects = NULL;
         if (messagesCount > 0)
         {
             wattron(window, COLOR_PAIR(1));
@@ -657,7 +650,10 @@ char RenderSelectUserView(const char *selectedUser)
 
         ClearRows(Y_PRINT + 3, Y_PRINT + 25);
         FreeParsedStrings(messages, numOfMessages);
-        free(messageObjects);
+        if (messageObjects != NULL)
+        {
+            free(messageObjects);
+        }
     } while (ch != 'B' && ch != 'b');
 
     return ch;
@@ -833,6 +829,10 @@ ServerResponse SendRequest(char *request)
 
         free(request);
         return errorResponse;
+    }
+    else if (noOfBytesRead == 0)
+    {
+        exit(0);
     }
     else if (noOfBytesRead > 0)
     {
@@ -1123,7 +1123,7 @@ char *CreatePrintRow(struct MessageStructure messageObject, int i)
     int len;
     if (messageObject.replyId != -1)
     {
-        len = snprintf(NULL, 0, "[%d][R_TO: %d][ID: %d] %s: %s", i, messageObject.replyId, messageObject.id,
+        len = snprintf(NULL, 0, "[%d][ID: %d][RE: %d] %s: %s", i, messageObject.id, messageObject.replyId,
                        messageObject.sender, messageObject.message);
     }
     else
@@ -1139,7 +1139,7 @@ char *CreatePrintRow(struct MessageStructure messageObject, int i)
     char *messageRow = (char *)malloc(len + 1);
     if (messageObject.replyId != -1)
     {
-        snprintf(messageRow, len + 1, "[%d][R_TO: %d][ID: %d] %s: %s", i, messageObject.replyId, messageObject.id,
+        snprintf(messageRow, len + 1, "[%d][ID: %d][RE: %d] %s: %s", i, messageObject.id, messageObject.replyId,
                  messageObject.sender, messageObject.message);
     }
     else

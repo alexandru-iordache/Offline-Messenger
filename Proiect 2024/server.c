@@ -66,7 +66,7 @@ int main()
     }
 
     int createLogFileFlag = CreateFile();
-    if (!CreateFile())
+    if (!createLogFileFlag)
     {
         printf("[SERVER][ERROR] Error at create log file.!\n");
         return -1;
@@ -243,7 +243,6 @@ char *ProcessClientRequest(const int clientId, ClientRequest requestStructure)
             return CreateServerResponse(409, "Already logged in.");
         case 2:
             return CreateServerResponse(200, "Quit");
-            break;
         case 3:
             responseStructure = ProccesViewMessagesRequest(clientId, requestStructure);
             break;
